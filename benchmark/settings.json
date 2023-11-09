@@ -1,7 +1,7 @@
 {
   "key": {
     "name": "gustas-aws",
-    "path": "/home/gp/.ssh/gustas-aws"
+    "path": "/home/ubuntu/.ssh/gustas-aws"
   },
   "port": 5000,
   "repo": {
