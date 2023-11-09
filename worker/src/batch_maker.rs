@@ -10,9 +10,11 @@ use ed25519_dalek::{Digest as _, Sha512};
 #[cfg(feature = "benchmark")]
 use log::info;
 use network::ReliableSender;
+use std::collections::VecDeque;
 #[cfg(feature = "benchmark")]
 use std::convert::TryInto as _;
 use std::net::SocketAddr;
+use std::time::{UNIX_EPOCH, SystemTime};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::{sleep, Duration, Instant};
 
@@ -41,6 +43,86 @@ pub struct BatchMaker {
     current_batch_size: usize,
     /// A network sender to broadcast the batches to the other workers.
     network: ReliableSender,
+
+    parameter_optimizer: ParameterOptimizer,
+}
+
+pub struct InputRate {
+    // Queue of previous tranasctions, used to remove old transactions to calculate new rate.
+    transaction_queue: VecDeque<(u128, u64)>,
+    // Current input rate (transactions / sec).
+    transaction_rate: u64,
+}
+
+pub struct ParameterOptimizer {
+    // Current input rate.
+    input_rate: InputRate,
+    // Time when the system started.
+    system_start_time: u128,
+    // Current system level. Lower levels optimize for latency, higher levels for throughput.
+    current_level: usize,
+    // Max level the system can have. Currently it is only 1, will be increased in the future.
+    max_level: usize,
+    // Batch size for each system level.
+    batch_sizes: Vec<usize>,
+    // Input rate threshold at which to increase system level (if it is not the max level).
+    transaction_rate_thresholds: Vec<usize>
+}
+
+impl ParameterOptimizer {
+    pub fn new() -> Self {
+        Self {
+            input_rate: InputRate::new(),
+            system_start_time: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("Failed to measure time")
+                    .as_millis(),
+            current_level: 0,
+            max_level: 1,
+            batch_sizes: vec![50_000, 500_000],
+            transaction_rate_thresholds: vec![13000, 0]
+        }
+    }
+
+    fn get_current_rate(&self) -> usize {
+        self.input_rate.transaction_rate as usize
+    }
+
+    pub fn adjust_parameters(&mut self, batch_size: &mut usize) {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Failed to measure time")
+            .as_millis();
+        if self.system_start_time + 1000 < now {
+            if self.get_current_rate() > self.transaction_rate_thresholds[self.current_level] && self.current_level < self.max_level {
+                self.current_level += 1;
+                *batch_size = self.batch_sizes[self.current_level];
+            }
+        }
+    }
+}
+
+impl InputRate {
+    pub fn new() -> Self {
+        Self {
+            transaction_queue: VecDeque::new(),
+            transaction_rate: 0,
+        }
+    }
+
+    pub fn add_transactions(&mut self, size: u64) {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Failed to measure time")
+            .as_millis();
+        self.transaction_queue.push_back((now, size));
+        self.transaction_rate += size;
+
+        // remove old measurements
+        while self.transaction_queue.len() > 0 && self.transaction_queue.front().unwrap().0 + 1000 < now {
+            self.transaction_rate -= self.transaction_queue.pop_front().unwrap().1;
+        }
+    }
 }
 
 impl BatchMaker {
@@ -61,6 +143,7 @@ impl BatchMaker {
                 current_batch: Batch::with_capacity(batch_size * 2),
                 current_batch_size: 0,
                 network: ReliableSender::new(),
+                parameter_optimizer: ParameterOptimizer::new(),
             }
             .run()
             .await;
@@ -71,6 +154,7 @@ impl BatchMaker {
     async fn run(&mut self) {
         let timer = sleep(Duration::from_millis(self.max_batch_delay));
         tokio::pin!(timer);
+        self.batch_size = self.parameter_optimizer.batch_sizes[0];
 
         loop {
             tokio::select! {
@@ -102,6 +186,12 @@ impl BatchMaker {
     async fn seal(&mut self) {
         #[cfg(feature = "benchmark")]
         let size = self.current_batch_size;
+
+        let transaction_count = self.current_batch.len();
+        self.parameter_optimizer
+            .input_rate
+            .add_transactions(transaction_count as u64);
+        self.parameter_optimizer.adjust_parameters(&mut self.batch_size);
 
         // Look for sample txs (they all start with 0) and gather their txs id (the next 8 bytes).
         #[cfg(feature = "benchmark")]
