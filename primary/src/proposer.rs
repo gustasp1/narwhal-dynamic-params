@@ -29,6 +29,8 @@ pub struct Proposer {
     rx_core: Receiver<(Vec<Digest>, Round)>,
     /// Receives the batches' digests from our workers.
     rx_workers: Receiver<(Digest, WorkerId)>,
+    /// Receives level change from our workers.
+    rx_change_level: Receiver<usize>,
     /// Sends newly created headers to the `Core`.
     tx_core: Sender<Header>,
 
@@ -52,6 +54,7 @@ impl Proposer {
         max_header_delay: u64,
         rx_core: Receiver<(Vec<Digest>, Round)>,
         rx_workers: Receiver<(Digest, WorkerId)>,
+        rx_change_level: Receiver<usize>,
         tx_core: Sender<Header>,
     ) {
         let genesis = Certificate::genesis(committee)
@@ -67,6 +70,7 @@ impl Proposer {
                 max_header_delay,
                 rx_core,
                 rx_workers,
+                rx_change_level,
                 tx_core,
                 round: 1,
                 last_parents: genesis,
