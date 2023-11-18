@@ -66,11 +66,13 @@ pub struct ParameterOptimizer {
     // Batch size for each system level.
     batch_sizes: Vec<usize>,
     // Input rate threshold at which to increase system level (if it is not the max level).
-    transaction_rate_thresholds: Vec<usize>
+    transaction_rate_thresholds: Vec<usize>,
+    // Output channel to inform proposer about changing system level.
+    tx_change_level: Sender<usize>,
 }
 
 impl ParameterOptimizer {
-    pub fn new() -> Self {
+    pub fn new(tx_change_level: Sender<usize>) -> Self {
         Self {
             input_rate: InputRate::new(),
             system_start_time: SystemTime::now()
@@ -80,12 +82,9 @@ impl ParameterOptimizer {
             current_level: 0,
             max_level: 1,
             batch_sizes: vec![50_000, 500_000],
-            transaction_rate_thresholds: vec![13000, 0]
+            transaction_rate_thresholds: vec![1000, 0],
+            tx_change_level,
         }
-    }
-
-    fn get_current_rate(&self) -> usize {
-        self.input_rate.transaction_rate as usize
     }
 
     pub fn adjust_parameters(&mut self, batch_size: &mut usize) {
@@ -97,9 +96,24 @@ impl ParameterOptimizer {
             if self.get_current_rate() > self.transaction_rate_thresholds[self.current_level] && self.current_level < self.max_level {
                 self.current_level += 1;
                 *batch_size = self.batch_sizes[self.current_level];
+
+                self.change_system_level(self.current_level + 1);
             }
         }
     }
+
+    fn get_current_rate(&self) -> usize {
+        self.input_rate.transaction_rate as usize
+    }
+
+    async fn change_system_level(&mut self, new_level: usize) {
+        // Increase the level of proposer
+        self.tx_change_level
+            .send(new_level)
+            .await
+            .expect("Failed to send new level to proposer");
+    }
+
 }
 
 impl InputRate {
@@ -131,6 +145,7 @@ impl BatchMaker {
         max_batch_delay: u64,
         rx_transaction: Receiver<Transaction>,
         tx_message: Sender<QuorumWaiterMessage>,
+        tx_change_level: Sender<usize>,
         workers_addresses: Vec<(PublicKey, SocketAddr)>,
     ) {
         tokio::spawn(async move {
@@ -143,7 +158,7 @@ impl BatchMaker {
                 current_batch: Batch::with_capacity(batch_size * 2),
                 current_batch_size: 0,
                 network: ReliableSender::new(),
-                parameter_optimizer: ParameterOptimizer::new(),
+                parameter_optimizer: ParameterOptimizer::new(tx_change_level),
             }
             .run()
             .await;

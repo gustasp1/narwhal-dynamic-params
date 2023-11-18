@@ -71,8 +71,9 @@ impl Worker {
 
         // Spawn all worker tasks.
         let (tx_primary, rx_primary) = channel(CHANNEL_CAPACITY);
+        let (tx_change_level, rx_change_level) = channel(CHANNEL_CAPACITY);
         worker.handle_primary_messages();
-        worker.handle_clients_transactions(tx_primary.clone());
+        worker.handle_clients_transactions(tx_primary.clone(), tx_change_level);
         worker.handle_workers_messages(tx_primary);
 
         // The `PrimaryConnector` allows the worker to send messages to its primary.
@@ -83,6 +84,7 @@ impl Worker {
                 .expect("Our public key is not in the committee")
                 .worker_to_primary,
             rx_primary,
+            rx_change_level,
         );
 
         // NOTE: This log entry is used to compute performance.
@@ -135,7 +137,7 @@ impl Worker {
     }
 
     /// Spawn all tasks responsible to handle clients transactions.
-    fn handle_clients_transactions(&self, tx_primary: Sender<SerializedBatchDigestMessage>) {
+    fn handle_clients_transactions(&self, tx_primary: Sender<SerializedBatchDigestMessage>, tx_change_level: Sender<usize>) {
         let (tx_batch_maker, rx_batch_maker) = channel(CHANNEL_CAPACITY);
         let (tx_quorum_waiter, rx_quorum_waiter) = channel(CHANNEL_CAPACITY);
         let (tx_processor, rx_processor) = channel(CHANNEL_CAPACITY);
@@ -160,6 +162,7 @@ impl Worker {
             self.parameters.max_batch_delay,
             /* rx_transaction */ rx_batch_maker,
             /* tx_message */ tx_quorum_waiter,
+            /* tx_change_level */ tx_change_level,
             /* workers_addresses */
             self.committee
                 .others_workers(&self.name, &self.id)

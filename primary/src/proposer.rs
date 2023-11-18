@@ -149,6 +149,9 @@ impl Proposer {
                 Some((digest, worker_id)) = self.rx_workers.recv() => {
                     self.payload_size += digest.size();
                     self.digests.push((digest, worker_id));
+                },
+                Some(level) = self.rx_change_level.recv() => {
+                    // info!("received change level to {}", level);
                 }
                 () = &mut timer => {
                     // Nothing to do.
