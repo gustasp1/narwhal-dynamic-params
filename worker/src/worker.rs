@@ -137,7 +137,7 @@ impl Worker {
     }
 
     /// Spawn all tasks responsible to handle clients transactions.
-    fn handle_clients_transactions(&self, tx_primary: Sender<SerializedBatchDigestMessage>, tx_change_level: Sender<usize>) {
+    fn handle_clients_transactions(&self, tx_primary: Sender<SerializedBatchDigestMessage>, tx_change_level: Sender<Vec<u8>>) {
         let (tx_batch_maker, rx_batch_maker) = channel(CHANNEL_CAPACITY);
         let (tx_quorum_waiter, rx_quorum_waiter) = channel(CHANNEL_CAPACITY);
         let (tx_processor, rx_processor) = channel(CHANNEL_CAPACITY);
