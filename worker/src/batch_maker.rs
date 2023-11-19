@@ -23,6 +23,11 @@ use tokio::time::{sleep, Duration, Instant};
 #[path = "tests/batch_maker_tests.rs"]
 pub mod batch_maker_tests;
 
+const ONE_SECOND_IN_MILLIS: u128 = 1_000;
+// Minimum time the system has to be running to start changing parameters, measured in millis.
+const MININUM_RUNNING_TIME: u128 = 100;
+
+
 pub type Transaction = Vec<u8>;
 pub type Batch = Vec<Transaction>;
 
@@ -93,7 +98,7 @@ impl ParameterOptimizer {
             .duration_since(UNIX_EPOCH)
             .expect("Failed to measure time")
             .as_millis();
-        if self.system_start_time + 1000 < now {
+        if self.system_start_time + MININUM_RUNNING_TIME < now {
             if self.get_current_rate() > self.transaction_rate_thresholds[self.current_level] && self.current_level < self.max_level {
                 self.current_level += 1;
                 *batch_size = self.batch_sizes[self.current_level];
@@ -104,6 +109,14 @@ impl ParameterOptimizer {
     }
 
     fn get_current_rate(&self) -> usize {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Failed to measure time")
+            .as_millis() ;
+        let diff = now - self.system_start_time;
+        if diff < ONE_SECOND_IN_MILLIS {
+            return (self.input_rate.transaction_rate as u128 / diff * ONE_SECOND_IN_MILLIS) as usize;
+        }
         self.input_rate.transaction_rate as usize
     }
 
@@ -138,7 +151,7 @@ impl InputRate {
         self.transaction_rate += size;
 
         // remove old measurements
-        while self.transaction_queue.len() > 0 && self.transaction_queue.front().unwrap().0 + 1000 < now {
+        while self.transaction_queue.len() > 0 && self.transaction_queue.front().unwrap().0 + ONE_SECOND_IN_MILLIS < now {
             self.transaction_rate -= self.transaction_queue.pop_front().unwrap().1;
         }
     }
