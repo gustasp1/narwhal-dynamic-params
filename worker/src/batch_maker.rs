@@ -82,8 +82,8 @@ impl ParameterOptimizer {
                     .as_millis(),
             current_level: 0,
             max_level: 2,
-            batch_sizes: vec![1, 5_000, 1_000_000],
-            transaction_rate_thresholds: vec![1_000,  6_000, 0],
+            batch_sizes: vec![1, 2_000, 1_000_000],
+            transaction_rate_thresholds: vec![1_000,  4_000, 0],
             tx_change_level,
         }
     }
