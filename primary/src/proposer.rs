@@ -88,7 +88,7 @@ impl Proposer {
                 param_config: ProposerParameterConfig {
                     header_sizes: vec![1, 1, 1_000],
                     // for now, header delays are not changed
-                    header_delays: vec![200, 200, 200],
+                    header_delays: vec![200, 200, 800],
                 },
             }
             .run()
