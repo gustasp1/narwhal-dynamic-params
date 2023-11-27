@@ -79,6 +79,7 @@ pub struct ParameterOptimizer {
 
 impl ParameterOptimizer {
     pub fn new(tx_change_level: Sender<Vec<u8>>, total_worker_count: usize) -> Self {
+        info!("total worker count: {}", total_worker_count);
         Self {
             input_rate: InputRate::new(),
             system_start_time: SystemTime::now()
