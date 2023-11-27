@@ -78,7 +78,7 @@ pub struct ParameterOptimizer {
 }
 
 impl ParameterOptimizer {
-    pub fn new(tx_change_level: Sender<Vec<u8>>) -> Self {
+    pub fn new(tx_change_level: Sender<Vec<u8>>, total_worker_count: usize) -> Self {
         Self {
             input_rate: InputRate::new(),
             system_start_time: SystemTime::now()
@@ -88,7 +88,10 @@ impl ParameterOptimizer {
             current_level: 0,
             max_level: 2,
             batch_sizes: vec![1, 2_000, 1_000_000],
-            transaction_rate_thresholds: vec![1_000,  4_000, 0],
+            transaction_rate_thresholds: vec![1_000, 4_000, 0]
+                .iter()
+                .map(|&size| size / total_worker_count)
+                .collect(),
             tx_change_level,
         }
     }
@@ -100,6 +103,7 @@ impl ParameterOptimizer {
             .as_millis();
         if self.system_start_time + MININUM_RUNNING_TIME < now {
             if self.get_current_rate() > self.transaction_rate_thresholds[self.current_level] && self.current_level < self.max_level {
+                info!("Increasing system level to: {}", self.current_level + 1);
                 self.current_level += 1;
                 *batch_size = self.batch_sizes[self.current_level];
 
@@ -165,6 +169,7 @@ impl BatchMaker {
         tx_message: Sender<QuorumWaiterMessage>,
         tx_change_level: Sender<Vec<u8>>,
         workers_addresses: Vec<(PublicKey, SocketAddr)>,
+        total_worker_count: usize,
     ) {
         tokio::spawn(async move {
             Self {
@@ -176,7 +181,7 @@ impl BatchMaker {
                 current_batch: Batch::with_capacity(batch_size * 2),
                 current_batch_size: 0,
                 network: ReliableSender::new(),
-                parameter_optimizer: ParameterOptimizer::new(tx_change_level),
+                parameter_optimizer: ParameterOptimizer::new(tx_change_level, total_worker_count),
             }
             .run()
             .await;

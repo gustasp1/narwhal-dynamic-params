@@ -50,6 +50,8 @@ pub struct Worker {
     parameters: Parameters,
     /// The persistent storage.
     store: Store,
+    /// The total number of workers. total = count primaries * count workers per primary
+    total_worker_count: usize,
 }
 
 impl Worker {
@@ -59,6 +61,7 @@ impl Worker {
         committee: Committee,
         parameters: Parameters,
         store: Store,
+        total_worker_count: usize,
     ) {
         // Define a worker instance.
         let worker = Self {
@@ -67,6 +70,7 @@ impl Worker {
             committee,
             parameters,
             store,
+            total_worker_count,
         };
 
         // Spawn all worker tasks.
@@ -169,6 +173,7 @@ impl Worker {
                 .iter()
                 .map(|(name, addresses)| (*name, addresses.worker_to_worker))
                 .collect(),
+            self.total_worker_count,
         );
 
         // The `QuorumWaiter` waits for 2f authorities to acknowledge reception of the batch. It then forwards
