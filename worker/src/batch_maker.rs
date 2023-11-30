@@ -89,7 +89,7 @@ impl ParameterOptimizer {
             current_level: 0,
             max_level: 2,
             batch_sizes: vec![1, 2_000, 1_000_000],
-            transaction_rate_thresholds: vec![1_000, 4_000, 0]
+            transaction_rate_thresholds: vec![10_000, 40_000, 0]
                 .iter()
                 .map(|&size| size / total_worker_count)
                 .collect(),
