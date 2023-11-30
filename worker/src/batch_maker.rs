@@ -88,7 +88,7 @@ impl ParameterOptimizer {
                     .as_millis(),
             current_level: 0,
             max_level: 2,
-            batch_sizes: vec![500_000, 2_000, 500_000],
+            batch_sizes: vec![50_000, 2_000, 500_000],
             transaction_rate_thresholds: vec![500_000, 20_000, 0]
                 .iter()
                 .map(|&size| size / total_worker_count)
@@ -194,6 +194,7 @@ impl BatchMaker {
         let timer = sleep(Duration::from_millis(self.max_batch_delay));
         tokio::pin!(timer);
         self.batch_size = self.parameter_optimizer.batch_sizes[0];
+        info!("batch size: {}", self.batch_size);
 
         loop {
             tokio::select! {
