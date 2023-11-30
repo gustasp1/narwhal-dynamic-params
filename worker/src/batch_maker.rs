@@ -10,6 +10,7 @@ use ed25519_dalek::{Digest as _, Sha512};
 #[cfg(feature = "benchmark")]
 use log::info;
 use network::ReliableSender;
+use primary::WorkerPrimaryMessage;
 use std::collections::VecDeque;
 #[cfg(feature = "benchmark")]
 use std::convert::TryInto as _;
@@ -21,6 +22,11 @@ use tokio::time::{sleep, Duration, Instant};
 #[cfg(test)]
 #[path = "tests/batch_maker_tests.rs"]
 pub mod batch_maker_tests;
+
+const ONE_SECOND_IN_MILLIS: u128 = 1_000;
+// Minimum time the system has to be running to start changing parameters, measured in millis.
+const MININUM_RUNNING_TIME: u128 = 100;
+
 
 pub type Transaction = Vec<u8>;
 pub type Batch = Vec<Transaction>;
@@ -66,11 +72,14 @@ pub struct ParameterOptimizer {
     // Batch size for each system level.
     batch_sizes: Vec<usize>,
     // Input rate threshold at which to increase system level (if it is not the max level).
-    transaction_rate_thresholds: Vec<usize>
+    transaction_rate_thresholds: Vec<usize>,
+    // Output channel to inform proposer about changing system level.
+    tx_change_level: Sender<Vec<u8>>,
 }
 
 impl ParameterOptimizer {
-    pub fn new() -> Self {
+    pub fn new(tx_change_level: Sender<Vec<u8>>, total_worker_count: usize) -> Self {
+        info!("total worker count: {}", total_worker_count);
         Self {
             input_rate: InputRate::new(),
             system_start_time: SystemTime::now()
@@ -78,28 +87,56 @@ impl ParameterOptimizer {
                     .expect("Failed to measure time")
                     .as_millis(),
             current_level: 0,
-            max_level: 1,
-            batch_sizes: vec![1, 10_000, 600_000],
-            transaction_rate_thresholds: vec![800, 4_000, 0]
+            max_level: 2,
+            batch_sizes: vec![1, 2_000, 600_000],
+            transaction_rate_thresholds: vec![10_000, 40_000, 0]
+                .iter()
+                .map(|&size| size / total_worker_count)
+                .collect(),
+            tx_change_level
         }
     }
 
-    fn get_current_rate(&self) -> usize {
-        self.input_rate.transaction_rate as usize
-    }
-
-    pub fn adjust_parameters(&mut self, batch_size: &mut usize) {
+    pub async fn adjust_parameters(&mut self, batch_size: &mut usize) {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Failed to measure time")
             .as_millis();
-        if self.system_start_time + 1000 < now {
+        if self.system_start_time + MININUM_RUNNING_TIME < now {
             if self.get_current_rate() > self.transaction_rate_thresholds[self.current_level] && self.current_level < self.max_level {
+                info!("Increasing system level to: {}", self.current_level + 1);
                 self.current_level += 1;
                 *batch_size = self.batch_sizes[self.current_level];
+
+                self.change_proposer_level(self.current_level).await;
             }
         }
     }
+
+    fn get_current_rate(&self) -> usize {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Failed to measure time")
+            .as_millis() ;
+        let diff = now - self.system_start_time;
+        if diff < ONE_SECOND_IN_MILLIS {
+            return (self.input_rate.transaction_rate as u128 / diff * ONE_SECOND_IN_MILLIS) as usize;
+        }
+        self.input_rate.transaction_rate as usize
+    }
+
+    async fn change_proposer_level(&mut self, new_level: usize) {
+        // Increase the level of proposerq
+        let message = WorkerPrimaryMessage::ChangeLevel(new_level);
+        let message = bincode::serialize(&message)
+            .expect("Failed to serialize change level message");
+
+        self.tx_change_level
+            .send(message)
+            .await
+            .expect("Failed to send level change to proposer");
+    }
+
 }
 
 impl InputRate {
@@ -119,7 +156,7 @@ impl InputRate {
         self.transaction_rate += size;
 
         // remove old measurements
-        while self.transaction_queue.len() > 0 && self.transaction_queue.front().unwrap().0 + 1000 < now {
+        while self.transaction_queue.len() > 0 && self.transaction_queue.front().unwrap().0 + ONE_SECOND_IN_MILLIS < now {
             self.transaction_rate -= self.transaction_queue.pop_front().unwrap().1;
         }
     }
@@ -131,7 +168,9 @@ impl BatchMaker {
         max_batch_delay: u64,
         rx_transaction: Receiver<Transaction>,
         tx_message: Sender<QuorumWaiterMessage>,
+        tx_change_level: Sender<Vec<u8>>,
         workers_addresses: Vec<(PublicKey, SocketAddr)>,
+        total_worker_count: usize,
     ) {
         tokio::spawn(async move {
             Self {
@@ -143,7 +182,7 @@ impl BatchMaker {
                 current_batch: Batch::with_capacity(batch_size * 2),
                 current_batch_size: 0,
                 network: ReliableSender::new(),
-                parameter_optimizer: ParameterOptimizer::new(),
+                parameter_optimizer: ParameterOptimizer::new(tx_change_level, total_worker_count),
             }
             .run()
             .await;
@@ -155,6 +194,7 @@ impl BatchMaker {
         let timer = sleep(Duration::from_millis(self.max_batch_delay));
         tokio::pin!(timer);
         self.batch_size = self.parameter_optimizer.batch_sizes[0];
+        info!("batch size: {}", self.batch_size);
 
         loop {
             tokio::select! {
@@ -189,9 +229,9 @@ impl BatchMaker {
 
         let transaction_count = self.current_batch.len();
         self.parameter_optimizer
-            .input_rate
-            .add_transactions(transaction_count as u64);
-        self.parameter_optimizer.adjust_parameters(&mut self.batch_size);
+           .input_rate
+           .add_transactions(transaction_count as u64);
+        self.parameter_optimizer.adjust_parameters(&mut self.batch_size).await;
 
         // Look for sample txs (they all start with 0) and gather their txs id (the next 8 bytes).
         #[cfg(feature = "benchmark")]

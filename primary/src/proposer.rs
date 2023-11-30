@@ -29,6 +29,8 @@ pub struct Proposer {
     rx_core: Receiver<(Vec<Digest>, Round)>,
     /// Receives the batches' digests from our workers.
     rx_workers: Receiver<(Digest, WorkerId)>,
+    /// Receives level change from our workers.
+    rx_change_level: Receiver<usize>,
     /// Sends newly created headers to the `Core`.
     tx_core: Sender<Header>,
 
@@ -40,6 +42,15 @@ pub struct Proposer {
     digests: Vec<(Digest, WorkerId)>,
     /// Keeps track of the size (in bytes) of batches' digests that we received so far.
     payload_size: usize,
+    /// Header sizes and delays, set based on the current system level
+    param_config: ProposerParameterConfig,
+}
+
+pub struct ProposerParameterConfig {
+    /// Header sizes for different system levels.
+    header_sizes: Vec<usize>,
+    /// Header delays for different system levels.
+    header_delays: Vec<u64>,
 }
 
 impl Proposer {
@@ -52,6 +63,7 @@ impl Proposer {
         max_header_delay: u64,
         rx_core: Receiver<(Vec<Digest>, Round)>,
         rx_workers: Receiver<(Digest, WorkerId)>,
+        rx_change_level: Receiver<usize>,
         tx_core: Sender<Header>,
     ) {
         let genesis = Certificate::genesis(committee)
@@ -67,11 +79,16 @@ impl Proposer {
                 max_header_delay,
                 rx_core,
                 rx_workers,
+                rx_change_level,
                 tx_core,
                 round: 1,
                 last_parents: genesis,
                 digests: Vec::with_capacity(2 * header_size),
                 payload_size: 0,
+                param_config: ProposerParameterConfig {
+                    header_sizes: vec![1, 1, 1_000],
+                    header_delays: vec![200, 200, 300],
+                },
             }
             .run()
             .await;
@@ -106,6 +123,9 @@ impl Proposer {
     // Main loop listening to incoming messages.
     pub async fn run(&mut self) {
         debug!("Dag starting at round {}", self.round);
+
+        //self.header_size = self.param_config.header_sizes[0];
+        //self.max_header_delay = self.param_config.header_delays[0];
 
         let timer = sleep(Duration::from_millis(self.max_header_delay));
         tokio::pin!(timer);
@@ -145,6 +165,11 @@ impl Proposer {
                 Some((digest, worker_id)) = self.rx_workers.recv() => {
                     self.payload_size += digest.size();
                     self.digests.push((digest, worker_id));
+                },
+                Some(level) = self.rx_change_level.recv() => {
+                    info!("received level {}", level);
+                    self.header_size = self.param_config.header_sizes[level];
+                    self.max_header_delay = self.param_config.header_delays[level];
                 }
                 () = &mut timer => {
                     // Nothing to do.
