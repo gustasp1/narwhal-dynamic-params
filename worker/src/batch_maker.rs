@@ -49,117 +49,6 @@ pub struct BatchMaker {
     current_batch_size: usize,
     /// A network sender to broadcast the batches to the other workers.
     network: ReliableSender,
-
-    parameter_optimizer: ParameterOptimizer,
-}
-
-pub struct InputRate {
-    // Queue of previous tranasctions, used to remove old transactions to calculate new rate.
-    transaction_queue: VecDeque<(u128, u64)>,
-    // Current input rate (transactions / sec).
-    transaction_rate: u64,
-}
-
-pub struct ParameterOptimizer {
-    // Current input rate.
-    input_rate: InputRate,
-    // Time when the system started.
-    system_start_time: u128,
-    // Current system level. Lower levels optimize for latency, higher levels for throughput.
-    current_level: usize,
-    // Max level the system can have. Currently it is only 1, will be increased in the future.
-    max_level: usize,
-    // Batch size for each system level.
-    batch_sizes: Vec<usize>,
-    // Input rate threshold at which to increase system level (if it is not the max level).
-    transaction_rate_thresholds: Vec<usize>,
-    // Output channel to inform proposer about changing system level.
-    tx_change_level: Sender<Vec<u8>>,
-}
-
-impl ParameterOptimizer {
-    pub fn new(tx_change_level: Sender<Vec<u8>>, total_worker_count: usize) -> Self {
-        info!("total worker count: {}", total_worker_count);
-        Self {
-            input_rate: InputRate::new(),
-            system_start_time: SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .expect("Failed to measure time")
-                    .as_millis(),
-            current_level: 0,
-            max_level: 2,
-            batch_sizes: vec![50_000, 2_000, 500_000],
-            transaction_rate_thresholds: vec![500_000, 20_000, 0]
-                .iter()
-                .map(|&size| size / total_worker_count)
-                .collect(),
-            tx_change_level,
-        }
-    }
-
-    pub async fn adjust_parameters(&mut self, batch_size: &mut usize) {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Failed to measure time")
-            .as_millis();
-        if self.system_start_time + MININUM_RUNNING_TIME < now {
-            if self.get_current_rate() > self.transaction_rate_thresholds[self.current_level] && self.current_level < self.max_level {
-                info!("Increasing system level to: {}", self.current_level + 1);
-                self.current_level += 1;
-                *batch_size = self.batch_sizes[self.current_level];
-
-                self.change_proposer_level(self.current_level).await;
-            }
-        }
-    }
-
-    fn get_current_rate(&self) -> usize {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Failed to measure time")
-            .as_millis() ;
-        let diff = now - self.system_start_time;
-        if diff < ONE_SECOND_IN_MILLIS {
-            return (self.input_rate.transaction_rate as u128 / diff * ONE_SECOND_IN_MILLIS) as usize;
-        }
-        self.input_rate.transaction_rate as usize
-    }
-
-    async fn change_proposer_level(&mut self, new_level: usize) {
-        // Increase the level of proposerq
-        let message = WorkerPrimaryMessage::ChangeLevel(new_level);
-        let message = bincode::serialize(&message)
-            .expect("Failed to serialize change level message");
-
-        self.tx_change_level
-            .send(message)
-            .await
-            .expect("Failed to send level change to proposer");
-    }
-
-}
-
-impl InputRate {
-    pub fn new() -> Self {
-        Self {
-            transaction_queue: VecDeque::new(),
-            transaction_rate: 0,
-        }
-    }
-
-    pub fn add_transactions(&mut self, size: u64) {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Failed to measure time")
-            .as_millis();
-        self.transaction_queue.push_back((now, size));
-        self.transaction_rate += size;
-
-        // remove old measurements
-        while self.transaction_queue.len() > 0 && self.transaction_queue.front().unwrap().0 + ONE_SECOND_IN_MILLIS < now {
-            self.transaction_rate -= self.transaction_queue.pop_front().unwrap().1;
-        }
-    }
 }
 
 impl BatchMaker {
@@ -182,7 +71,6 @@ impl BatchMaker {
                 current_batch: Batch::with_capacity(batch_size * 2),
                 current_batch_size: 0,
                 network: ReliableSender::new(),
-                parameter_optimizer: ParameterOptimizer::new(tx_change_level, total_worker_count),
             }
             .run()
             .await;
@@ -193,7 +81,6 @@ impl BatchMaker {
     async fn run(&mut self) {
         let timer = sleep(Duration::from_millis(self.max_batch_delay));
         tokio::pin!(timer);
-        self.batch_size = self.parameter_optimizer.batch_sizes[0];
         info!("batch size: {}", self.batch_size);
 
         loop {
@@ -227,7 +114,7 @@ impl BatchMaker {
         #[cfg(feature = "benchmark")]
         let size = self.current_batch_size;
 
-        let transaction_count = self.current_batch.len();
+        //let transaction_count = self.current_batch.len();
         //self.parameter_optimizer
         //    .input_rate
         //    .add_transactions(transaction_count as u64);
