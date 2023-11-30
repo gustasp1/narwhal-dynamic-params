@@ -86,14 +86,8 @@ impl Proposer {
                 digests: Vec::with_capacity(2 * header_size),
                 payload_size: 0,
                 param_config: ProposerParameterConfig {
-<<<<<<< HEAD
                     header_sizes: vec![1, 1, 1_000],
                     header_delays: vec![200, 200, 400],
-=======
-                    header_sizes: vec![1_000, 1, 1_000],
-                    // for now, header delays are not changed
-                    header_delays: vec![800, 200, 800],
->>>>>>> 7362f9f9bd25ef149312e644d1bc135a8a38284b
                 },
             }
             .run()

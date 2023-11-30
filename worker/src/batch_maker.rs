@@ -49,7 +49,6 @@ pub struct BatchMaker {
     current_batch_size: usize,
     /// A network sender to broadcast the batches to the other workers.
     network: ReliableSender,
-<<<<<<< HEAD
 
     parameter_optimizer: ParameterOptimizer,
 }
@@ -94,7 +93,7 @@ impl ParameterOptimizer {
                 .iter()
                 .map(|&size| size / total_worker_count)
                 .collect(),
-            tx_change_level,
+            tx_change_level
         }
     }
 
@@ -161,8 +160,6 @@ impl InputRate {
             self.transaction_rate -= self.transaction_queue.pop_front().unwrap().1;
         }
     }
-=======
->>>>>>> 7362f9f9bd25ef149312e644d1bc135a8a38284b
 }
 
 impl BatchMaker {
@@ -185,6 +182,7 @@ impl BatchMaker {
                 current_batch: Batch::with_capacity(batch_size * 2),
                 current_batch_size: 0,
                 network: ReliableSender::new(),
+                parameter_optimizer: ParameterOptimizer::new(tx_change_level, total_worker_count),
             }
             .run()
             .await;
@@ -228,11 +226,11 @@ impl BatchMaker {
         #[cfg(feature = "benchmark")]
         let size = self.current_batch_size;
 
-        //let transaction_count = self.current_batch.len();
-        //self.parameter_optimizer
-        //    .input_rate
-        //    .add_transactions(transaction_count as u64);
-        //self.parameter_optimizer.adjust_parameters(&mut self.batch_size).await;
+        let transaction_count = self.current_batch.len();
+        self.parameter_optimizer
+           .input_rate
+           .add_transactions(transaction_count as u64);
+        self.parameter_optimizer.adjust_parameters(&mut self.batch_size).await;
 
         // Look for sample txs (they all start with 0) and gather their txs id (the next 8 bytes).
         #[cfg(feature = "benchmark")]
