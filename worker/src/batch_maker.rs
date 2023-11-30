@@ -193,6 +193,7 @@ impl BatchMaker {
     async fn run(&mut self) {
         let timer = sleep(Duration::from_millis(self.max_batch_delay));
         tokio::pin!(timer);
+        self.batch_size = self.parameter_optimizer.batch_sizes[0];
         info!("batch size: {}", self.batch_size);
 
         loop {
