@@ -34,9 +34,10 @@ class LogParser:
                 results = p.map(self._parse_clients, clients)
         except (ValueError, IndexError, AttributeError) as e:
             raise ParseError(f'Failed to parse clients\' logs: {e}')
-        self.size, self.rate, self.start, misses, self.sent_samples \
-            = zip(*results)
+        self.size, self.rate, self.start, misses, self.sent_samples, \
+                rates_times = zip(*results)
         self.misses = sum(misses)
+        self._process_rates_times(rates_times)
 
         # Parse the primaries logs.
         try:
@@ -67,6 +68,17 @@ class LogParser:
             Print.warn(
                 f'Clients missed their target rate {self.misses:,} time(s)'
             )
+    
+    def _process_rates_times(self, rates_times):
+        rates_times = list(sum(rates_times, []))
+        rates_times = sorted(rates_times, key = lambda x : x[1])
+        rates, times = [list(x) for x in zip(*rates_times)]
+        # Times should start from 0
+        times = [t - times[0] for t in times]
+        
+        with open('input_rates.txt', 'w') as f:
+            f.write(f"{rates}\n")
+            f.write(f"{times}")
 
     def _merge_results(self, input):
         # Keep the earliest timestamp.
@@ -92,7 +104,10 @@ class LogParser:
         tmp = findall(r'\[(.*Z) .* sample transaction (\d+)', log)
         samples = {int(s): self._to_posix(t) for t, s in tmp}
 
-        return size, rate, start, misses, samples
+        rates_times = findall(r'\[(.*Z) .* Current rate: (\d+)', log)
+        rates_times = [(int(rate), self._to_posix(t)) for t, rate in rates_times]
+
+        return size, rate, start, misses, samples, rates_times
 
     def _parse_primaries(self, log):
         if search(r'(?:panicked|Error)', log) is not None:
@@ -242,7 +257,6 @@ class LogParser:
     @classmethod
     def process(cls, directory, faults=0):
         assert isinstance(directory, str)
-
         clients = []
         for filename in sorted(glob(join(directory, 'client-*.log'))):
             with open(filename, 'r') as f:
