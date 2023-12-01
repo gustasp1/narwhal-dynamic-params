@@ -2,7 +2,7 @@
 use crate::batch_maker::{Batch, BatchMaker, Transaction};
 use crate::helper::Helper;
 use crate::primary_connector::PrimaryConnector;
-use crate::processor::{Processor, SerializedBatchMessage};
+use crate::processor::{Processor, ProcessorMessage};
 use crate::quorum_waiter::QuorumWaiter;
 use crate::synchronizer::Synchronizer;
 use async_trait::async_trait;
@@ -35,7 +35,7 @@ pub type SerializedBatchDigestMessage = Vec<u8>;
 /// The message exchanged between workers.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum WorkerMessage {
-    Batch(Batch),
+    Batch(Batch, usize, u64),
     BatchRequest(Vec<Digest>, /* origin */ PublicKey),
 }
 
@@ -272,7 +272,7 @@ impl MessageHandler for TxReceiverHandler {
 #[derive(Clone)]
 struct WorkerReceiverHandler {
     tx_helper: Sender<(Vec<Digest>, PublicKey)>,
-    tx_processor: Sender<SerializedBatchMessage>,
+    tx_processor: Sender<ProcessorMessage>,
 }
 
 #[async_trait]
@@ -283,9 +283,9 @@ impl MessageHandler for WorkerReceiverHandler {
 
         // Deserialize and parse the message.
         match bincode::deserialize(&serialized) {
-            Ok(WorkerMessage::Batch(..)) => self
+            Ok(WorkerMessage::Batch(_, transaction_count, mean_start_time)) => self
                 .tx_processor
-                .send(serialized.to_vec())
+                .send(ProcessorMessage { batch: serialized.to_vec(), transaction_count, mean_start_time})
                 .await
                 .expect("Failed to send batch"),
             Ok(WorkerMessage::BatchRequest(missing, requestor)) => self

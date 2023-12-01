@@ -18,6 +18,7 @@ use std::net::SocketAddr;
 use std::time::{UNIX_EPOCH, SystemTime};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::{sleep, Duration, Instant};
+use byteorder::{BigEndian, ByteOrder};
 
 #[cfg(test)]
 #[path = "tests/batch_maker_tests.rs"]
@@ -26,7 +27,11 @@ pub mod batch_maker_tests;
 const ONE_SECOND_IN_MILLIS: u128 = 1_000;
 // Minimum time the system has to be running to start changing parameters, measured in millis.
 const MININUM_RUNNING_TIME: u128 = 100;
-
+// When checking if we need to decrease current system level, we do not want to decrease level as soon
+// current input rate is lower than current threshold because if the input load is close to a certain threshold,
+// the level will be increasing and decreasing very frequently. For example, if the current threshold is 10_000,
+// the input rate has to be lower that 10_000 * THRESHOLD_FACTOR for the system level to go back to previous state.
+const THRESHOLD_FACTOR: f64 = 0.9;
 
 pub type Transaction = Vec<u8>;
 pub type Batch = Vec<Transaction>;
@@ -103,9 +108,19 @@ impl ParameterOptimizer {
             .expect("Failed to measure time")
             .as_millis();
         if self.system_start_time + MININUM_RUNNING_TIME < now {
-            if self.get_current_rate() > self.transaction_rate_thresholds[self.current_level] && self.current_level < self.max_level {
+            let current_rate = self.get_current_rate();
+            // Check if we need to increase
+            if current_rate > self.transaction_rate_thresholds[self.current_level] && self.current_level < self.max_level {
                 info!("Increasing system level to: {}", self.current_level + 1);
                 self.current_level += 1;
+                *batch_size = self.batch_sizes[self.current_level];
+
+                self.change_proposer_level(self.current_level).await;
+            }
+            // Check if we need to decrease
+            if self.current_level > 0 && (current_rate as f64) < self.transaction_rate_thresholds[self.current_level] as f64 * THRESHOLD_FACTOR {
+                info!("Decreasing system level to: {}", self.current_level - 1);
+                self.current_level -= 1;
                 *batch_size = self.batch_sizes[self.current_level];
 
                 self.change_proposer_level(self.current_level).await;
@@ -245,13 +260,24 @@ impl BatchMaker {
         // Serialize the batch.
         self.current_batch_size = 0;
         let batch: Vec<_> = self.current_batch.drain(..).collect();
-        let message = WorkerMessage::Batch(batch);
+
+        let mut mean_start_time = 0;
+        let transaction_count = batch.len();
+
+        if let (Some(first_transaction), Some(last_transaction)) = (batch.first(), batch.last()) {
+            let first_transaction_timestamp = BigEndian::read_u64(&first_transaction[9..17]);
+            let last_transaction_timestamp = BigEndian::read_u64(&last_transaction[9..17]);
+            mean_start_time = (first_transaction_timestamp + last_transaction_timestamp) / 2;
+        }
+
+
+        let message = WorkerMessage::Batch(batch, transaction_count, mean_start_time);
         let serialized = bincode::serialize(&message).expect("Failed to serialize our own batch");
 
         #[cfg(feature = "benchmark")]
         {
             // NOTE: This is one extra hash that is only needed to print the following log entries.
-            let digest = Digest(
+            let digest = Digest::new_with_hash(
                 Sha512::digest(&serialized).as_slice()[..32]
                     .try_into()
                     .unwrap(),
@@ -280,6 +306,8 @@ impl BatchMaker {
             .send(QuorumWaiterMessage {
                 batch: serialized,
                 handlers: names.into_iter().zip(handlers.into_iter()).collect(),
+                transaction_count,
+                mean_start_time,
             })
             .await
             .expect("Failed to deliver batch");
