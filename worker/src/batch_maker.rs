@@ -18,6 +18,7 @@ use std::net::SocketAddr;
 use std::time::{UNIX_EPOCH, SystemTime};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::{sleep, Duration, Instant};
+use byteorder::{BigEndian, ByteOrder};
 
 #[cfg(test)]
 #[path = "tests/batch_maker_tests.rs"]
@@ -259,13 +260,24 @@ impl BatchMaker {
         // Serialize the batch.
         self.current_batch_size = 0;
         let batch: Vec<_> = self.current_batch.drain(..).collect();
-        let message = WorkerMessage::Batch(batch);
+
+        let mut mean_start_time = 0;
+        let transaction_count = batch.len();
+
+        if let (Some(first_transaction), Some(last_transaction)) = (batch.first(), batch.last()) {
+            let first_transaction_timestamp = BigEndian::read_u64(&first_transaction[9..17]);
+            let last_transaction_timestamp = BigEndian::read_u64(&last_transaction[9..17]);
+            mean_start_time = (first_transaction_timestamp + last_transaction_timestamp) / 2;
+        }
+
+
+        let message = WorkerMessage::Batch(batch, transaction_count, mean_start_time);
         let serialized = bincode::serialize(&message).expect("Failed to serialize our own batch");
 
         #[cfg(feature = "benchmark")]
         {
             // NOTE: This is one extra hash that is only needed to print the following log entries.
-            let digest = Digest(
+            let digest = Digest::new_with_hash(
                 Sha512::digest(&serialized).as_slice()[..32]
                     .try_into()
                     .unwrap(),
@@ -294,6 +306,8 @@ impl BatchMaker {
             .send(QuorumWaiterMessage {
                 batch: serialized,
                 handlers: names.into_iter().zip(handlers.into_iter()).collect(),
+                transaction_count,
+                mean_start_time,
             })
             .await
             .expect("Failed to deliver batch");

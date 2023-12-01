@@ -1,5 +1,5 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
-use crate::processor::SerializedBatchMessage;
+use crate::processor::{SerializedBatchMessage, ProcessorMessage};
 use config::{Committee, Stake};
 use crypto::PublicKey;
 use futures::stream::futures_unordered::FuturesUnordered;
@@ -17,6 +17,10 @@ pub struct QuorumWaiterMessage {
     pub batch: SerializedBatchMessage,
     /// The cancel handlers to receive the acknowledgements of our broadcast.
     pub handlers: Vec<(PublicKey, CancelHandler)>,
+    /// The number of transactions in the batch.
+    pub transaction_count: usize,
+    /// Mean start time of first and last batch transactions.
+    pub mean_start_time: u64,
 }
 
 /// The QuorumWaiter waits for 2f authorities to acknowledge reception of a batch.
@@ -28,7 +32,7 @@ pub struct QuorumWaiter {
     /// Input Channel to receive commands.
     rx_message: Receiver<QuorumWaiterMessage>,
     /// Channel to deliver batches for which we have enough acknowledgements.
-    tx_batch: Sender<SerializedBatchMessage>,
+    tx_batch: Sender<ProcessorMessage>,
 }
 
 impl QuorumWaiter {
@@ -37,7 +41,7 @@ impl QuorumWaiter {
         committee: Committee,
         stake: Stake,
         rx_message: Receiver<QuorumWaiterMessage>,
-        tx_batch: Sender<Vec<u8>>,
+        tx_batch: Sender<ProcessorMessage>,
     ) {
         tokio::spawn(async move {
             Self {
@@ -59,7 +63,7 @@ impl QuorumWaiter {
 
     /// Main loop.
     async fn run(&mut self) {
-        while let Some(QuorumWaiterMessage { batch, handlers }) = self.rx_message.recv().await {
+        while let Some(QuorumWaiterMessage { batch, handlers, transaction_count, mean_start_time}) = self.rx_message.recv().await {
             let mut wait_for_quorum: FuturesUnordered<_> = handlers
                 .into_iter()
                 .map(|(name, handler)| {
@@ -76,7 +80,7 @@ impl QuorumWaiter {
                 total_stake += stake;
                 if total_stake >= self.committee.quorum_threshold() {
                     self.tx_batch
-                        .send(batch)
+                        .send(ProcessorMessage { batch, transaction_count, mean_start_time})
                         .await
                         .expect("Failed to deliver batch");
                     break;
