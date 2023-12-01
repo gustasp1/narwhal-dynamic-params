@@ -262,7 +262,7 @@ impl BatchMaker {
         let batch: Vec<_> = self.current_batch.drain(..).collect();
 
         let mut mean_start_time = 0;
-        let transaction_count = batch.len();
+        let transaction_count = batch.len() as u64;
 
         if let (Some(first_transaction), Some(last_transaction)) = (batch.first(), batch.last()) {
             let first_transaction_timestamp = BigEndian::read_u64(&first_transaction[9..17]);

@@ -18,7 +18,7 @@ pub struct QuorumWaiterMessage {
     /// The cancel handlers to receive the acknowledgements of our broadcast.
     pub handlers: Vec<(PublicKey, CancelHandler)>,
     /// The number of transactions in the batch.
-    pub transaction_count: usize,
+    pub transaction_count: u64,
     /// Mean start time of first and last batch transactions.
     pub mean_start_time: u64,
 }

@@ -20,7 +20,7 @@ pub struct ProcessorMessage {
     /// A serialized `WorkerMessage::Batch` message.
     pub batch: SerializedBatchMessage,
     /// The number of transactions in the batch.
-    pub transaction_count: usize,
+    pub transaction_count: u64,
     /// Mean start time of first and last batch transactions.
     pub mean_start_time: u64,
 }

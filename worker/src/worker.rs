@@ -35,7 +35,7 @@ pub type SerializedBatchDigestMessage = Vec<u8>;
 /// The message exchanged between workers.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum WorkerMessage {
-    Batch(Batch, usize, u64),
+    Batch(Batch, u64, u64),
     BatchRequest(Vec<Digest>, /* origin */ PublicKey),
 }
 
