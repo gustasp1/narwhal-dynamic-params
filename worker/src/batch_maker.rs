@@ -26,7 +26,11 @@ pub mod batch_maker_tests;
 const ONE_SECOND_IN_MILLIS: u128 = 1_000;
 // Minimum time the system has to be running to start changing parameters, measured in millis.
 const MININUM_RUNNING_TIME: u128 = 100;
-
+// When checking if we need to decrease current system level, we do not want to decrease level as soon
+// current input rate is lower than current threshold because if the input load is close to a certain threshold,
+// the level will be increasing and decreasing very frequently. For example, if the current threshold is 10_000,
+// the input rate has to be lower that 10_000 * THRESHOLD_FACTOR for the system level to go back to previous state.
+const THRESHOLD_FACTOR: f64 = 0.9;
 
 pub type Transaction = Vec<u8>;
 pub type Batch = Vec<Transaction>;
@@ -103,9 +107,19 @@ impl ParameterOptimizer {
             .expect("Failed to measure time")
             .as_millis();
         if self.system_start_time + MININUM_RUNNING_TIME < now {
-            if self.get_current_rate() > self.transaction_rate_thresholds[self.current_level] && self.current_level < self.max_level {
+            let current_rate = self.get_current_rate();
+            // Check if we need to increase
+            if current_rate > self.transaction_rate_thresholds[self.current_level] && self.current_level < self.max_level {
                 info!("Increasing system level to: {}", self.current_level + 1);
                 self.current_level += 1;
+                *batch_size = self.batch_sizes[self.current_level];
+
+                self.change_proposer_level(self.current_level).await;
+            }
+            // Check if we need to decrease
+            if self.current_level > 0 && current_rate < self.transaction_rate_thresholds[self.current_level] * THRESHOLD_FACTOR {
+                info!("Decreasing system level to: {}", self.current_level - 1);
+                self.current_level -= 1;
                 *batch_size = self.batch_sizes[self.current_level];
 
                 self.change_proposer_level(self.current_level).await;
