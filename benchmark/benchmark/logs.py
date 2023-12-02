@@ -7,6 +7,7 @@ from re import findall, search
 from statistics import mean
 
 from benchmark.utils import Print
+import math
 
 
 class ParseError(Exception):
@@ -75,12 +76,32 @@ class LogParser:
         values_times = list(sum(values_times, []))
         values_times = sorted(values_times, key = lambda x : x[1])
         values, times = [list(x) for x in zip(*values_times)]
+        
         # Times should start from 0
         times = [t - times[0] for t in times]
+        i = 0
+        next_values, next_times = [], []
+        step = 0
+        while i < len(times):
+            s = 0
+            cnt = 0
+            while i < len(times) and math.floor(times[i]*2) == step:
+                s += values[i]
+                cnt += 1
+                i += 1
+            if cnt > 0:
+                next_values.append(int(s / cnt))
+                next_times.append(step)
+            step += 1
+        
+        print("---------------------------------------------------------")
+        print(len(next_times))
+        print(len(next_values))
+        print("---------------------------------------------------------")
         
         with open('input_rates.txt', file_mode) as f:
-            f.write(f"{values}\n")
-            f.write(f"{times}\n")
+            f.write(f"{next_values}\n")
+            f.write(f"{next_times}\n")
 
     def _merge_results(self, input):
         # Keep the earliest timestamp.
