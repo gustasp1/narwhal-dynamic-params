@@ -86,7 +86,7 @@ impl Client {
     pub async fn send(&self) -> Result<()> {
         const PRECISION: u64 = 20; // Sample precision.
         const BURST_DURATION: u64 = 1000 / PRECISION;
-        const FLUCTUATION_DURATION: Duration = Duration::from_millis(1_000);
+        const FLUCTUATION_DURATION: Duration = Duration::from_millis(10_000);
 
         // The transaction size must be at least 16 bytes to ensure all txs are different.
         if self.size < 9 {
@@ -100,7 +100,7 @@ impl Client {
             .await
             .context(format!("failed to connect to {}", self.target))?;
 
-        let input_rates = [self.rate, 3_500, 450];
+        let input_rates = [self.rate, 500];
         let mut current_rate = self.rate;
         let mut current_rate_index = 0;
 

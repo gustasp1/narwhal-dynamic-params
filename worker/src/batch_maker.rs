@@ -118,7 +118,7 @@ impl ParameterOptimizer {
                 self.change_proposer_level(self.current_level).await;
             }
             // Check if we need to decrease
-            if self.current_level > 0 && (current_rate as f64) < self.transaction_rate_thresholds[self.current_level] as f64 * THRESHOLD_FACTOR {
+            if self.current_level > 0 && (current_rate as f64) < self.transaction_rate_thresholds[self.current_level-1] as f64 * THRESHOLD_FACTOR {
                 info!("Decreasing system level to: {}", self.current_level - 1);
                 self.current_level -= 1;
                 *batch_size = self.batch_sizes[self.current_level];

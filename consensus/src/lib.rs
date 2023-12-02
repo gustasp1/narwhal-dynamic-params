@@ -65,7 +65,11 @@ impl State {
 
 struct PerformanceMetrics {
     tps_queue: VecDeque<(u64, u64)>, 
-    current_tps: u64, 
+    current_tps: u64,
+    latency_queue: VecDeque<u64>,
+    current_latency: u64,
+    current_latency_sum: u64,
+    latency_queue_size: usize,
 }
 
 impl PerformanceMetrics {
@@ -73,20 +77,31 @@ impl PerformanceMetrics {
         Self {
             tps_queue: VecDeque::new(),
             current_tps: 0,
+            latency_queue: VecDeque::new(),
+            current_latency: 0,
+            current_latency_sum: 0,
+            latency_queue_size: 5,
         }
     }
 
-    fn add_measurement(&mut self, transaction_count: u64) {
+    fn add_measurement(&mut self, digest: &Digest) {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Failed to measure time")
             .as_millis() as u64;
-        self.tps_queue.push_back((now, transaction_count));
-        self.current_tps += transaction_count;
+        self.tps_queue.push_back((now, digest.transaction_count));
+        self.current_tps += digest.transaction_count;
 
         while self.tps_queue.len() > 0 && self.tps_queue.front().unwrap().0 + 1_000 < now {
             self.current_tps -= self.tps_queue.pop_front().unwrap().1;
         }
+
+        self.latency_queue.push_back(now - digest.mean_start_time);
+        self.current_latency_sum += now - digest.mean_start_time;
+        while self.latency_queue.len() > self.latency_queue_size {
+            self.current_latency_sum -= self.latency_queue.pop_front().unwrap();
+        }
+        self.current_latency = self.current_latency_sum / self.latency_queue.len() as u64;
     }
 }
 
@@ -224,8 +239,8 @@ impl Consensus {
                         .expect("Failed to measure time")
                         .as_millis() as u64;
 
-                    performance_metrics.add_measurement(digest.transaction_count);
-                    info!("Current latency: {}", now - digest.mean_start_time);
+                    performance_metrics.add_measurement(digest);
+                    info!("Current latency: {}", performance_metrics.current_latency);
                     if start_time + 1_000 < now {
                         info!("Current TPS: {}", performance_metrics.current_tps);
                     }

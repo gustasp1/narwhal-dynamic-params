@@ -37,7 +37,7 @@ class LogParser:
         self.size, self.rate, self.start, misses, self.sent_samples, \
                 rates_times = zip(*results)
         self.misses = sum(misses)
-        self._process_rates_times(rates_times)
+        self._process_values_times(rates_times, 'w')
 
         # Parse the primaries logs.
         try:
@@ -45,9 +45,11 @@ class LogParser:
                 results = p.map(self._parse_primaries, primaries)
         except (ValueError, IndexError, AttributeError) as e:
             raise ParseError(f'Failed to parse nodes\' logs: {e}')
-        proposals, commits, self.configs, primary_ips = zip(*results)
+        proposals, commits, self.configs, primary_ips, latencies_times, tps_times = zip(*results)
         self.proposals = self._merge_results([x.items() for x in proposals])
         self.commits = self._merge_results([x.items() for x in commits])
+        self._process_values_times(latencies_times)
+        self._process_values_times(tps_times)
 
         # Parse the workers logs.
         try:
@@ -69,16 +71,16 @@ class LogParser:
                 f'Clients missed their target rate {self.misses:,} time(s)'
             )
     
-    def _process_rates_times(self, rates_times):
-        rates_times = list(sum(rates_times, []))
-        rates_times = sorted(rates_times, key = lambda x : x[1])
-        rates, times = [list(x) for x in zip(*rates_times)]
+    def _process_values_times(self, values_times, file_mode = 'a'):
+        values_times = list(sum(values_times, []))
+        values_times = sorted(values_times, key = lambda x : x[1])
+        values, times = [list(x) for x in zip(*values_times)]
         # Times should start from 0
         times = [t - times[0] for t in times]
         
-        with open('input_rates.txt', 'w') as f:
-            f.write(f"{rates}\n")
-            f.write(f"{times}")
+        with open('input_rates.txt', file_mode) as f:
+            f.write(f"{values}\n")
+            f.write(f"{times}\n")
 
     def _merge_results(self, input):
         # Keep the earliest timestamp.
@@ -146,8 +148,14 @@ class LogParser:
         }
 
         ip = search(r'booted on (\d+.\d+.\d+.\d+)', log).group(1)
+
+        latencies_times = findall(r'\[(.*Z) .* Current latency: (\d+)', log)
+        latencies_times = [(int(latency), self._to_posix(t)) for t, latency in latencies_times]
         
-        return proposals, commits, configs, ip
+        tps_times = findall(r'\[(.*Z) .* Current TPS: (\d+)', log)
+        tps_times = [(int(tps), self._to_posix(t)) for t, tps in tps_times]
+        
+        return proposals, commits, configs, ip, latencies_times, tps_times
 
     def _parse_workers(self, log):
         if search(r'(?:panic|Error)', log) is not None:

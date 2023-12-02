@@ -10,6 +10,9 @@ from benchmark.utils import PathMaker
 from benchmark.config import PlotParameters
 from benchmark.aggregate import LogAggregator
 
+from pathlib import Path
+import shutil
+
 
 @tick.FuncFormatter
 def default_major_formatter(x, pos):
@@ -205,12 +208,21 @@ class Ploter:
     @classmethod
     def plot_fluctuations(cls):
         try:
+            if Path("fluctuation_plots").exists():
+                shutil.rmtree('fluctuation_plots')
+            Path("fluctuation_plots").mkdir()
             with open('input_rates.txt', 'r') as f:
                 lines = f.readlines()
-                rates = [int(rate) for rate in lines[0][1:len(lines[0])-2].split(', ')]
-                times = [float(t) for t in lines[1][1:len(lines[1])-2].split(', ')]
+                index = 0
+                for filename in ['input_rate_vs_time.png', 'latency_vs_time.png', 'tps_vs_time.png']:
+                    values = [int(value) for value in lines[index][1:len(lines[index])-2].split(', ')]
+                    index += 1
+                    times = [float(t) for t in lines[index][1:len(lines[index])-2].split(', ')]
+                    index += 1
                 
-                plt.plot(times, rates)
-                plt.show()
+                    plt.plot(times, values)
+                    plt.savefig(f"fluctuation_plots/{filename}")
+                    plt.clf()
+
         except FileNotFoundError as e:
             raise PlotError('Input rates file could not be found', e)
