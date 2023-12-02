@@ -201,3 +201,16 @@ class Ploter:
 
         cls.plot_latency(latency_files, params.scalability())
         cls.plot_tps(tps_files, params.scalability())
+
+    @classmethod
+    def plot_fluctuations(cls):
+        try:
+            with open('input_rates.txt', 'r') as f:
+                lines = f.readlines()
+                rates = [int(rate) for rate in lines[0][1:len(lines[0])-2].split(', ')]
+                times = [float(t) for t in lines[1][1:len(lines[1])-2].split(', ')]
+                
+                plt.plot(times, rates)
+                plt.show()
+        except FileNotFoundError as e:
+            raise PlotError('Input rates file could not be found', e)

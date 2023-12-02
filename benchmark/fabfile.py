@@ -136,6 +136,15 @@ def plot(ctx):
 
 
 @task
+def fplot(ctx):
+    ''' Plot input rate, TPS, and latency against time while input rate is flactuating '''
+    try:
+        Ploter.plot_fluctuations()
+    except PlotError as e:
+        Print.error(BenchError('Failed to plot flactuations', e))
+
+
+@task
 def kill(ctx):
     ''' Stop execution on all machines '''
     try:
