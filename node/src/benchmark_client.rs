@@ -115,11 +115,15 @@ impl Client {
         // NOTE: This log entry is used to compute performance.
         info!("Start sending transactions");
         let mut current_rate_start = Instant::now();
+        let mut client_start = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .expect("Failed to measure time")
+                        .as_millis() as u64;
 
         'main: loop {
             interval.as_mut().tick().await;
             let now = Instant::now();
-            let startt = 1+2;
+            client_start += BURST_DURATION;
 
             for x in 0..burst {
                 if x == counter % burst {
@@ -133,7 +137,7 @@ impl Client {
                     tx.put_u8(1u8); // Standard txs start with 1.
                     tx.put_u64(r); // Ensures all clients send different txs.
                 };
-                tx.put_u64(startt);
+                tx.put_u64(client_start);
 
                 tx.resize(self.size, 0u8);
                 let bytes = tx.split().freeze();
