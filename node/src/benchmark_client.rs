@@ -118,8 +118,12 @@ impl Client {
 
         'main: loop {
             interval.as_mut().tick().await;
-            let now = Instant::now();
 
+            // Only calculate now once per burst
+            let time_in_millis = Instant::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
             for x in 0..burst {
                 let time_in_millis = SystemTime::now()
                         .duration_since(UNIX_EPOCH)
