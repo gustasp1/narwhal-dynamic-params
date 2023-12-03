@@ -137,7 +137,6 @@ impl Client {
                     tx.put_u64(r); // Ensures all clients send different txs.
                 };
                 tx.put_u64(time_in_millis+1);
-                info!("adding to tx: {}", time_in_millis+1);
 
                 tx.resize(self.size, 0u8);
                 let bytes = tx.split().freeze();
