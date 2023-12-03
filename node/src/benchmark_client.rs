@@ -117,11 +117,8 @@ impl Client {
         let mut current_rate_start = Instant::now();
 
         'main: loop {
-            let time_in_millis = Instant::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis() as u64;
             interval.as_mut().tick().await;
+            let now = Instant::now();
 
             for x in 0..burst {
                 if x == counter % burst {
@@ -135,7 +132,7 @@ impl Client {
                     tx.put_u8(1u8); // Standard txs start with 1.
                     tx.put_u64(r); // Ensures all clients send different txs.
                 };
-                tx.put_u64(time_in_millis);
+                tx.put_u64(0);
 
                 tx.resize(self.size, 0u8);
                 let bytes = tx.split().freeze();
