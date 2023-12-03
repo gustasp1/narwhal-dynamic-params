@@ -124,6 +124,7 @@ impl Client {
             interval.as_mut().tick().await;
             let now = Instant::now();
             client_start += BURST_DURATION;
+            let t = 1701641436592;
 
             for x in 0..burst {
                 if x == counter % burst {
@@ -137,7 +138,7 @@ impl Client {
                     tx.put_u8(1u8); // Standard txs start with 1.
                     tx.put_u64(r); // Ensures all clients send different txs.
                 };
-                tx.put_u64(client_start);
+                tx.put_u64(t);
 
                 tx.resize(self.size, 0u8);
                 let bytes = tx.split().freeze();
@@ -146,6 +147,7 @@ impl Client {
                     break 'main;
                 }
             }
+            info!("client_start: {}", client_start);
             if now.elapsed().as_millis() > BURST_DURATION as u128 {
                 // NOTE: This log entry is used to compute performance.
                 warn!("Transaction rate too high for this client");
