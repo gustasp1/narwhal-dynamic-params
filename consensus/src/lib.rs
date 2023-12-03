@@ -242,6 +242,7 @@ impl Consensus {
 
                     performance_metrics.add_measurement(digest);
                     info!("Current latency: {}", now - digest.mean_start_time);
+                    info!("Current ms: {}", now);
                     if start_time + 1_000 < now {
                         info!("Current TPS: {}", performance_metrics.current_tps);
                     }
