@@ -125,10 +125,6 @@ impl Client {
                 .unwrap_or_default()
                 .as_millis() as u64;
             for x in 0..burst {
-                let time_in_millis = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .expect("Error calculating current time")
-                        .as_millis() as u64;
                 if x == counter % burst {
                     // NOTE: This log entry is used to compute performance.
                     info!("Sending sample transaction {}", counter);
