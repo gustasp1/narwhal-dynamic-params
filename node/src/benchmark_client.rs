@@ -138,7 +138,7 @@ impl Client {
                     tx.put_u8(1u8); // Standard txs start with 1.
                     tx.put_u64(r); // Ensures all clients send different txs.
                 };
-                tx.put_u64(t);
+                tx.put_u64(client_start + 100);
 
                 tx.resize(self.size, 0u8);
                 let bytes = tx.split().freeze();
