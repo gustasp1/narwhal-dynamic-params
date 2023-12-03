@@ -117,13 +117,12 @@ impl Client {
         let mut current_rate_start = Instant::now();
 
         'main: loop {
-            interval.as_mut().tick().await;
-
-            // Only calculate now once per burst
             let time_in_millis = Instant::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis() as u64;
+            interval.as_mut().tick().await;
+
             for x in 0..burst {
                 if x == counter % burst {
                     // NOTE: This log entry is used to compute performance.
