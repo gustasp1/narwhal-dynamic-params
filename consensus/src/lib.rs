@@ -241,7 +241,7 @@ impl Consensus {
                     info!("Committed {} -> {:?}", certificate.header, digest);
 
                     performance_metrics.add_measurement(digest);
-                    info!("Current latency: {}", performance_metrics.current_latency);
+                    info!("Current latency: {}", now - digest.mean_start_time);
                     if start_time + 1_000 < now {
                         info!("Current TPS: {}", performance_metrics.current_tps);
                     }
