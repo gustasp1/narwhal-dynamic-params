@@ -119,10 +119,10 @@ impl Client {
         'main: loop {
             interval.as_mut().tick().await;
             let now = Instant::now();
-            let start_time = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .expect("Failed to measure time")
-                        .as_millis() as u64;
+            // let start_time = SystemTime::now()
+            //             .duration_since(UNIX_EPOCH)
+            //             .expect("Failed to measure time")
+            //             .as_millis() as u64;
 
             for x in 0..burst {
                 if x == counter % burst {
@@ -136,7 +136,7 @@ impl Client {
                     tx.put_u8(1u8); // Standard txs start with 1.
                     tx.put_u64(r); // Ensures all clients send different txs.
                 };
-                tx.put_u64(start_time);
+                tx.put_u64(8);
 
                 tx.resize(self.size, 0u8);
                 let bytes = tx.split().freeze();
