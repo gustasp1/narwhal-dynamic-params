@@ -154,9 +154,6 @@ impl Consensus {
                             .expect("Failed to measure time")
                             .as_millis() as u64;
 
-        info!("Current latency: {}",15_000);
-        info!("Current TPS: {}", 25_000);
-
         // Listen to incoming certificates.
         while let Some(certificate) = self.rx_primary.recv().await {
             debug!("Processing {:?}", certificate);
