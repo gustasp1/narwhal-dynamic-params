@@ -119,10 +119,10 @@ impl Client {
         'main: loop {
             interval.as_mut().tick().await;
             let now = Instant::now();
-            // let start_time = SystemTime::now()
-            //             .duration_since(UNIX_EPOCH)
-            //             .expect("Failed to measure time")
-            //             .as_millis() as u64;
+            let startt = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .expect("Failed to measure time")
+                        .as_millis() as u64;
 
             for x in 0..burst {
                 if x == counter % burst {
