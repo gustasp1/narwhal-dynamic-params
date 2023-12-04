@@ -18,7 +18,6 @@ use std::net::SocketAddr;
 use std::time::{UNIX_EPOCH, SystemTime};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::{sleep, Duration, Instant};
-use byteorder::{BigEndian, ByteOrder};
 
 #[cfg(test)]
 #[path = "tests/batch_maker_tests.rs"]
@@ -55,7 +54,6 @@ pub struct BatchMaker {
     /// A network sender to broadcast the batches to the other workers.
     network: ReliableSender,
 
-    parameter_optimizer: ParameterOptimizer,
     parameter_optimizer: ParameterOptimizer,
 }
 
@@ -210,7 +208,9 @@ impl BatchMaker {
         let timer = sleep(Duration::from_millis(self.max_batch_delay));
         tokio::pin!(timer);
         self.batch_size = self.parameter_optimizer.batch_sizes[self.parameter_optimizer.current_level];
-        self.parameter_optimizer.change_proposer_level(self.parameter_optimizer.current_level);
+        self.parameter_optimizer
+            .change_proposer_level(self.parameter_optimizer.current_level)
+            .await;
         info!("batch size: {}", self.batch_size);
 
         loop {
@@ -263,7 +263,7 @@ impl BatchMaker {
         self.current_batch_size = 0;
         let batch: Vec<_> = self.current_batch.drain(..).collect();
 
-        let mut mean_start_time = 0;
+        let mean_start_time = 0;
         let transaction_count = batch.len() as u64;
 
 
