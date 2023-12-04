@@ -91,7 +91,7 @@ impl ParameterOptimizer {
                     .duration_since(UNIX_EPOCH)
                     .expect("Failed to measure time")
                     .as_millis(),
-            current_level: 0,
+            current_level: 2,
             max_level: 2,
             batch_sizes: vec![1, 2_000, 600_000],
             transaction_rate_thresholds: vec![10_000, 40_000, 0]
@@ -208,7 +208,8 @@ impl BatchMaker {
     async fn run(&mut self) {
         let timer = sleep(Duration::from_millis(self.max_batch_delay));
         tokio::pin!(timer);
-        self.batch_size = self.parameter_optimizer.batch_sizes[0];
+        self.batch_size = self.parameter_optimizer.batch_sizes[current_level];
+        self.parameter_optimizer.change_proposer_level(current_level);
         info!("batch size: {}", self.batch_size);
 
         loop {
