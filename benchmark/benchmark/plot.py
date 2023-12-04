@@ -214,11 +214,12 @@ class Ploter:
             with open('input_rates.txt', 'r') as f:
                 lines = f.readlines()
                 index = 0
-                for filename in ['input_rate_vs_time.png', 'latency_vs_time.png', 'tps_vs_time.png']:
-                    values = [int(value) for value in lines[index][1:len(lines[index])-2].split(', ')]
+                for filename in ['input_rate_vs_time.png', 'tps_vs_time.png', 'latency_vs_time.png']:
+                    values = [float(value) for value in lines[index][1:len(lines[index])-2].split(', ')]
                     index += 1
                     times = [float(t) for t in lines[index][1:len(lines[index])-2].split(', ')]
                     index += 1
+                    print(filename)
                 
                     plt.plot(times, values)
                     plt.savefig(f"fluctuation_plots/{filename}")

@@ -153,6 +153,7 @@ impl Consensus {
                             .duration_since(UNIX_EPOCH)
                             .expect("Failed to measure time")
                             .as_millis() as u64;
+        info!("Current TPS: {}", 12);
 
         // Listen to incoming certificates.
         while let Some(certificate) = self.rx_primary.recv().await {
@@ -240,12 +241,12 @@ impl Consensus {
                     // NOTE: This log entry is used to compute performance.
                     info!("Committed {} -> {:?}", certificate.header, digest);
 
-                    performance_metrics.add_measurement(digest);
-                    info!("Current latency: {}", now - digest.mean_start_time);
-                    info!("Current ms: {}", now);
-                    if start_time + 1_000 < now {
-                        info!("Current TPS: {}", performance_metrics.current_tps);
-                    }
+                    // performance_metrics.add_measurement(digest);
+                    // info!("Current latency: {}", now - digest.mean_start_time);
+                    // info!("Current ms: {}", now);
+                    // if start_time + 1_000 < now {
+                    //     info!("Current TPS: {}", performance_metrics.current_tps);
+                    // }
                 }
 
                 self.tx_primary

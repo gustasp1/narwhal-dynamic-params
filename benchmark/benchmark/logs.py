@@ -46,10 +46,9 @@ class LogParser:
                 results = p.map(self._parse_primaries, primaries)
         except (ValueError, IndexError, AttributeError) as e:
             raise ParseError(f'Failed to parse nodes\' logs: {e}')
-        proposals, commits, self.configs, primary_ips, latencies_times, tps_times = zip(*results)
+        proposals, commits, self.configs, primary_ips, tps_times = zip(*results)
         self.proposals = self._merge_results([x.items() for x in proposals])
         self.commits = self._merge_results([x.items() for x in commits])
-        self._process_values_times(latencies_times)
         self._process_values_times(tps_times)
 
         # Parse the workers logs.
@@ -79,29 +78,14 @@ class LogParser:
         
         # Times should start from 0
         times = [t - times[0] for t in times]
-        i = 0
-        next_values, next_times = [], []
-        step = 0
-        while i < len(times):
-            s = 0
-            cnt = 0
-            while i < len(times) and math.floor(times[i]*2) == step:
-                s += values[i]
-                cnt += 1
-                i += 1
-            if cnt > 0:
-                next_values.append(int(s / cnt))
-                next_times.append(step)
-            step += 1
-        
-        print("---------------------------------------------------------")
-        print(len(next_times))
-        print(len(next_values))
-        print("---------------------------------------------------------")
-        
+
         with open('input_rates.txt', file_mode) as f:
-            f.write(f"{next_values}\n")
-            f.write(f"{next_times}\n")
+            f.write(f"{values}\n")
+            f.write(f"{times}\n")
+
+    def _write_to_file(self, values, file_mode='a'):
+        with open('input_rates.txt', file_mode) as f:
+            f.write(f"{values}\n")
 
     def _merge_results(self, input):
         # Keep the earliest timestamp.
@@ -169,14 +153,11 @@ class LogParser:
         }
 
         ip = search(r'booted on (\d+.\d+.\d+.\d+)', log).group(1)
-
-        latencies_times = findall(r'\[(.*Z) .* Current latency: (\d+)', log)
-        latencies_times = [(int(latency), self._to_posix(t)) for t, latency in latencies_times]
         
         tps_times = findall(r'\[(.*Z) .* Current TPS: (\d+)', log)
         tps_times = [(int(tps), self._to_posix(t)) for t, tps in tps_times]
         
-        return proposals, commits, configs, ip, latencies_times, tps_times
+        return proposals, commits, configs, ip, tps_times
 
     def _parse_workers(self, log):
         if search(r'(?:panic|Error)', log) is not None:
@@ -221,15 +202,25 @@ class LogParser:
         return tps, bps, duration
 
     def _end_to_end_latency(self):
-        latency = []
+        latency_sum = []
+        latency_times = []
+        latencies = []
         for sent, received in zip(self.sent_samples, self.received_samples):
             for tx_id, batch_id in received.items():
                 if batch_id in self.commits:
                     assert tx_id in sent  # We receive txs that we sent.
                     start = sent[tx_id]
                     end = self.commits[batch_id]
-                    latency += [end-start]
-        return mean(latency) if latency else 0
+                    latency_times.append(end)
+                    latencies.append(end-start)
+                    latency_sum += [end-start]
+        latencies, latency_times = [list(x) for x in zip(*sorted(zip(latencies, latency_times), key=lambda x : x[1]))]
+        latency_times = [t - latency_times[0] for t in latency_times]
+        self._write_to_file(latencies)
+        self._write_to_file(latency_times)
+        
+        assert latency_times == sorted(latency_times)
+        return mean(latency_sum) if latency_sum else 0
 
     def result(self):
         header_size = self.configs[0]['header_size']
@@ -244,6 +235,8 @@ class LogParser:
         consensus_tps, consensus_bps, _ = self._consensus_throughput()
         end_to_end_tps, end_to_end_bps, duration = self._end_to_end_throughput()
         end_to_end_latency = self._end_to_end_latency() * 1_000
+
+
 
         return (
             '\n'
