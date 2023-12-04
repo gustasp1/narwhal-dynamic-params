@@ -56,6 +56,7 @@ pub struct BatchMaker {
     network: ReliableSender,
 
     parameter_optimizer: ParameterOptimizer,
+    parameter_optimizer: ParameterOptimizer,
 }
 
 pub struct InputRate {
@@ -93,7 +94,7 @@ impl ParameterOptimizer {
                     .as_millis(),
             current_level: 2,
             max_level: 2,
-            batch_sizes: vec![1, 2_000, 600_000],
+            batch_sizes: vec![1, 2_000, 500_000],
             transaction_rate_thresholds: vec![10_000, 40_000, 0]
                 .iter()
                 .map(|&size| size / total_worker_count)
@@ -208,8 +209,8 @@ impl BatchMaker {
     async fn run(&mut self) {
         let timer = sleep(Duration::from_millis(self.max_batch_delay));
         tokio::pin!(timer);
-        self.batch_size = self.parameter_optimizer.batch_sizes[current_level];
-        self.parameter_optimizer.change_proposer_level(current_level);
+        self.batch_size = self.parameter_optimizer.batch_sizes[self.parameter_optimizer.current_level];
+        self.parameter_optimizer.change_proposer_level(self.parameter_optimizer.current_level);
         info!("batch size: {}", self.batch_size);
 
         loop {
