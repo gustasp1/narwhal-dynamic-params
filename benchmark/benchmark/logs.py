@@ -216,10 +216,25 @@ class LogParser:
                     latency_sum += [end-start]
         latencies, latency_times = [list(x) for x in zip(*sorted(zip(latencies, latency_times), key=lambda x : x[1]))]
         latency_times = [t - latency_times[0] for t in latency_times]
-        self._write_to_file(latencies)
-        self._write_to_file(latency_times)
+
+        i = 0
+        next_latencies, next_times = [], []
+        step = 0
+        while i < len(latency_times):
+            s = 0
+            cnt = 0
+            while i < len(latency_times) and math.floor(latency_times[i]*2) == step:
+                s += latencies[i]
+                cnt += 1
+                i += 1
+            if cnt > 0:
+                next_latencies.append(s / cnt)
+                next_times.append(step/2)
+            step += 1
         
-        assert latency_times == sorted(latency_times)
+        self._write_to_file(next_latencies)
+        self._write_to_file(next_times)
+
         return mean(latency_sum) if latency_sum else 0
 
     def result(self):
