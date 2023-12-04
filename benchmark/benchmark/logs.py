@@ -78,10 +78,30 @@ class LogParser:
         
         # Times should start from 0
         times = [t - times[0] for t in times]
+        values, times = self._group_into_buckets(values, times)
 
         with open('input_rates.txt', file_mode) as f:
             f.write(f"{values}\n")
             f.write(f"{times}\n")
+
+    # Groups logs into buckets according to their timestamps.
+    def _group_into_buckets(self, values, times, bucket_duration = 1_000):
+        i = 0
+        next_values, next_times = [], []
+        step = 0
+        multiplier = 1_000 / bucket_duration
+        while i < len(times):
+            s = 0
+            cnt = 0
+            while i < len(times) and math.floor(times[i]*multiplier) == step:
+                s += values[i]
+                cnt += 1
+                i += 1
+            if cnt > 0:
+                next_values.append(s / cnt)
+                next_times.append(step / multiplier)
+            step += 1
+        return next_values, next_times
 
     def _write_to_file(self, values, file_mode='a'):
         with open('input_rates.txt', file_mode) as f:
@@ -217,23 +237,10 @@ class LogParser:
         latencies, latency_times = [list(x) for x in zip(*sorted(zip(latencies, latency_times), key=lambda x : x[1]))]
         latency_times = [t - latency_times[0] for t in latency_times]
 
-        i = 0
-        next_latencies, next_times = [], []
-        step = 0
-        while i < len(latency_times):
-            s = 0
-            cnt = 0
-            while i < len(latency_times) and math.floor(latency_times[i]*2) == step:
-                s += latencies[i]
-                cnt += 1
-                i += 1
-            if cnt > 0:
-                next_latencies.append(s / cnt)
-                next_times.append(step/2)
-            step += 1
+        latencies, times = self._group_into_buckets(latencies, latency_times)
         
-        self._write_to_file(next_latencies)
-        self._write_to_file(next_times)
+        self._write_to_file(latencies)
+        self._write_to_file(times)
 
         return mean(latency_sum) if latency_sum else 0
 
