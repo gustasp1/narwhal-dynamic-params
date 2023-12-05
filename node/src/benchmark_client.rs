@@ -99,7 +99,7 @@ impl Client {
             .await
             .context(format!("failed to connect to {}", self.target))?;
 
-        let input_rates = [self.rate, 500];
+        let input_rates = [self.rate, 150];
         let mut current_rate = self.rate;
         let mut current_rate_index = 0;
 
