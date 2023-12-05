@@ -90,7 +90,7 @@ impl ParameterOptimizer {
                     .duration_since(UNIX_EPOCH)
                     .expect("Failed to measure time")
                     .as_millis(),
-            current_level: 2,
+            current_level: 1,
             max_level: 2,
             batch_sizes: vec![1, 2_000, 500_000],
             transaction_rate_thresholds: vec![10_000, 40_000, 0]
