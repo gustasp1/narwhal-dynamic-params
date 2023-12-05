@@ -16,6 +16,7 @@ class ParseError(Exception):
 
 class LogParser:
     def __init__(self, clients, primaries, workers, faults=0):
+        self.worker_count = len(workers)
         inputs = [clients, primaries, workers]
         assert all(isinstance(x, list) for x in inputs)
         assert all(isinstance(x, str) for y in inputs for x in y)
@@ -38,8 +39,8 @@ class LogParser:
         self.size, self.rate, self.start, misses, self.sent_samples, \
                 rates_times = zip(*results)
         self.misses = sum(misses)
-        self._process_values_times(rates_times, 'w')
-
+        self._process_values_times(rates_times, 'w', rates = True)
+        
         # Parse the primaries logs.
         try:
             with Pool() as p:
@@ -71,7 +72,7 @@ class LogParser:
                 f'Clients missed their target rate {self.misses:,} time(s)'
             )
     
-    def _process_values_times(self, values_times, file_mode = 'a'):
+    def _process_values_times(self, values_times, file_mode = 'a', rates = False):
         values_times = list(sum(values_times, []))
         values_times = sorted(values_times, key = lambda x : x[1])
         values, times = [list(x) for x in zip(*values_times)]
@@ -79,6 +80,9 @@ class LogParser:
         # Times should start from 0
         times = [t - times[0] for t in times]
         values, times = self._group_into_buckets(values, times)
+
+        if rates:
+            values = [rate * self.worker_count for rate in values]
 
         with open('input_rates.txt', file_mode) as f:
             f.write(f"{values}\n")

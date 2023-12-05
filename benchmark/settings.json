@@ -7,7 +7,7 @@
   "repo": {
     "name": "narwhal-dynamic-params",
     "url": "https://github.com/gustasp1/narwhal-dynamic-params",
-    "branch": "measuring-throughput"
+    "branch": "fluctuating-input-load"
   },
   "instances": {
     "type": "t3.medium",
