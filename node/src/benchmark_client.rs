@@ -12,7 +12,6 @@ use std::net::SocketAddr;
 use tokio::net::TcpStream;
 use tokio::time::{interval, sleep, Duration, Instant};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -116,10 +115,6 @@ impl Client {
             let now = Instant::now();
 
             for x in 0..burst {
-                let time_in_millis = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .expect("Error calculating current time")
-                        .as_millis() as u64;
                 if x == counter % burst {
                     // NOTE: This log entry is used to compute performance.
                     info!("Sending sample transaction {}", counter);
@@ -131,7 +126,7 @@ impl Client {
                     tx.put_u8(1u8); // Standard txs start with 1.
                     tx.put_u64(r); // Ensures all clients send different txs.
                 };
-                tx.put_u64(time_in_millis);
+                tx.put_u64(0);
 
                 tx.resize(self.size, 0u8);
                 let bytes = tx.split().freeze();
