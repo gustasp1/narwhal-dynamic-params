@@ -342,7 +342,7 @@ class Bench:
                 Print.info(f"Running phase {counter} / {total_runs}")
                 counter += 1
                 bench_parameters_dict["input_rate"] = input_rate
-                bench_parameters = BenchParameters(self.bench_parameters_dict)
+                bench_parameters = BenchParameters(bench_parameters_dict)
                 try:
                     self._run_single(input_rate, committee, bench_parameters, debug)
                 except (
