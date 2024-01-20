@@ -92,7 +92,7 @@ impl ParameterOptimizer {
                     .expect("Failed to measure time")
                     .as_millis() as u64,
             current_level: level,
-            batch_sizes: vec![1, 2_000, 600_000],
+            batch_sizes: vec![1, 1_000, 500_000],
             tx_change_level,
             config_map: HashMap::new(),
             sorted_input_rates: Vec::new(),
@@ -109,8 +109,9 @@ impl ParameterOptimizer {
             let current_rate = self.get_current_rate();
 
             for &input_rate in self.sorted_input_rates.iter() {
-                if current_rate > input_rate / self.total_worker_count as u64 {
+                if current_rate < input_rate / self.total_worker_count as u64 {
                     if self.config_map[&input_rate] != self.current_level {
+                        info!("At rate {} switching to level {}", current_rate, self.config_map[&input_rate]);
                         self.change_level(self.config_map[&input_rate]).await;
                     }
                     break;
@@ -168,7 +169,7 @@ impl ParameterOptimizer {
         };
 
         self.sorted_input_rates = self.config_map.keys().cloned().collect();
-        self.sorted_input_rates.sort_by(|a, b| b.cmp(a));
+        self.sorted_input_rates.sort();
     }
 }
 
