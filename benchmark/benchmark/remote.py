@@ -203,6 +203,7 @@ class Bench:
                 c.put(PathMaker.committee_file(), ".")
                 c.put(PathMaker.key_file(i), ".")
                 c.put(PathMaker.parameters_file(), ".")
+                c.put(PathMaker.system_level_config(), ".")
 
         return committee
 

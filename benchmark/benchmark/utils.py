@@ -31,6 +31,10 @@ class PathMaker:
     def key_file(i):
         assert isinstance(i, int) and i >= 0
         return f'.node-{i}.json'
+    
+    @staticmethod
+    def system_level_config():
+        return 'system_level_config.txt'
 
     @staticmethod
     def db_path(i, j=None):

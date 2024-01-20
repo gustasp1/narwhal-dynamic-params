@@ -92,7 +92,7 @@ impl ParameterOptimizer {
                     .expect("Failed to measure time")
                     .as_millis() as u64,
             current_level: level,
-            batch_sizes: vec![1, 1_000, 500_000],
+            batch_sizes: vec![1, 1_500, 500_000],
             tx_change_level,
             config_map: HashMap::new(),
             sorted_input_rates: Vec::new(),
@@ -107,10 +107,10 @@ impl ParameterOptimizer {
             .as_millis() as u64;
         if self.system_start_time + MININUM_RUNNING_TIME < now {
             let current_rate = self.get_current_rate();
-
             for &input_rate in self.sorted_input_rates.iter() {
                 if current_rate < input_rate / self.total_worker_count as u64 {
                     if self.config_map[&input_rate] != self.current_level {
+                        info!("At rate {} changing system level to {}", current_rate, self.config_map[&input_rate]);
                         self.change_level(self.config_map[&input_rate]).await;
                     }
                     break;
@@ -125,7 +125,6 @@ impl ParameterOptimizer {
             .expect("Failed to measure time")
             .as_millis() as u64;
         let diff = now - self.system_start_time;
-        info!("diff {} {}", diff, self.input_rate.transaction_rate);
         if diff < ONE_SECOND_IN_MILLIS {
             return self.input_rate.transaction_rate / diff * ONE_SECOND_IN_MILLIS;
         }
@@ -133,7 +132,6 @@ impl ParameterOptimizer {
     }
 
     async fn change_level(&mut self, new_level: usize) {
-        info!("Changing system level to {}", new_level);
         self.current_level = new_level;
 
         // Change the level of proposer
@@ -162,9 +160,9 @@ impl ParameterOptimizer {
             },
             Err(_) => {
                 // Default config
-                self.config_map.insert(1, 0);
-                self.config_map.insert(8_000, 1);
-                self.config_map.insert(20_000, 2);
+                self.config_map.insert(8_000, 0);
+                self.config_map.insert(20_000, 1);
+                self.config_map.insert(500_000, 2);
             }
         };
 
@@ -188,8 +186,6 @@ impl InputRate {
             .as_millis() as u64;
         self.transaction_queue.push_back((now, size));
         self.transaction_rate += size;
-
-        info!("adding transactions {}", size);
 
         // remove old measurements
         while self.transaction_queue.len() > 0 && self.transaction_queue.front().unwrap().0 + ONE_SECOND_IN_MILLIS < now {

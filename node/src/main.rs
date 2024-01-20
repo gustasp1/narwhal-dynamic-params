@@ -10,7 +10,6 @@ use primary::{Certificate, Primary};
 use store::Store;
 use tokio::sync::mpsc::{channel, Receiver};
 use worker::Worker;
-use log::info;
 
 /// The default channel capacity.
 pub const CHANNEL_CAPACITY: usize = 1_000;
@@ -39,8 +38,7 @@ async fn main() -> Result<()> {
                         .about("Run a single worker")
                         .args_from_usage("--id=<INT> 'The worker id'")
                         .args_from_usage("--level=<INT> 'The system level (0-2)'")
-                        .args_from_usage("--learning=<BOOL> 'learning flag'")
-                        .args_from_usage("--config=<FILE> 'learning flag'"),
+                        .args_from_usage("--learning=<BOOL> 'learning flag'"),
                 )
                 .setting(AppSettings::SubcommandRequiredElseHelp),
         )
@@ -142,11 +140,6 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                     "1" => true,
                     _ => false,
                 };
-            let config_file = sub_matches.value_of("config").unwrap();
-            let level_config = Worker::import_level_config(config_file);
-            for (key, value) in level_config.into_iter() {
-                info!("level config {} / {}", key, value);
-            }
             Worker::spawn(keypair.name, id, committee, parameters, store, total_worker_count, level, learning);
         }
         _ => unreachable!(),
