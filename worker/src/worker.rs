@@ -258,9 +258,9 @@ impl Worker {
         );
     }
 
-    pub fn import_level_config() -> HashMap<u64, usize> {
+    pub fn import_level_config(config_file: &str) -> HashMap<u64, usize> {
         let mut config_map = HashMap::new();
-        match fs::read_to_string("system_level_config.txt") {
+        match fs::read_to_string(config_file) {
             Ok(data) => {
                 for line in data.lines() {
                     let mut split_line = line.split_whitespace();

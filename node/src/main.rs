@@ -39,7 +39,8 @@ async fn main() -> Result<()> {
                         .about("Run a single worker")
                         .args_from_usage("--id=<INT> 'The worker id'")
                         .args_from_usage("--level=<INT> 'The system level (0-2)'")
-                        .args_from_usage("--learning=<BOOL> 'learning flag'"),
+                        .args_from_usage("--learning=<BOOL> 'learning flag'")
+                        .args_from_usage("--config=<FILE> 'learning flag'"),
                 )
                 .setting(AppSettings::SubcommandRequiredElseHelp),
         )
@@ -141,7 +142,8 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                     "1" => true,
                     _ => false,
                 };
-            let level_config = Worker::import_level_config();
+            let config_file = sub_matches.value_of("config").unwrap();
+            let level_config = Worker::import_level_config(config_file);
             for (key, value) in level_config.into_iter() {
                 info!("level config {} / {}", key, value);
             }

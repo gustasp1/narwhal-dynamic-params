@@ -109,11 +109,8 @@ impl ParameterOptimizer {
             let current_rate = self.get_current_rate();
 
             for &input_rate in self.sorted_input_rates.iter() {
-                info!("in loop {} {}", current_rate, input_rate / self.total_worker_count as u64);
                 if current_rate < input_rate / self.total_worker_count as u64 {
-                    info!("innner {} {}", current_rate, input_rate / self.total_worker_count as u64);
                     if self.config_map[&input_rate] != self.current_level {
-                        info!("At rate {} switching to level {} threshold {}", current_rate, self.config_map[&input_rate], input_rate);
                         self.change_level(self.config_map[&input_rate]).await;
                     }
                     break;
