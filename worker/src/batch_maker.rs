@@ -11,9 +11,10 @@ use ed25519_dalek::{Digest as _, Sha512};
 use log::info;
 use network::ReliableSender;
 use primary::WorkerPrimaryMessage;
-use std::collections::VecDeque;
+use std::collections::{VecDeque, HashMap};
 #[cfg(feature = "benchmark")]
 use std::convert::TryInto as _;
+use std::fs;
 use std::net::SocketAddr;
 use std::time::{UNIX_EPOCH, SystemTime};
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -24,14 +25,9 @@ use byteorder::{BigEndian, ByteOrder};
 #[path = "tests/batch_maker_tests.rs"]
 pub mod batch_maker_tests;
 
-const ONE_SECOND_IN_MILLIS: u128 = 1_000;
+const ONE_SECOND_IN_MILLIS: u64 = 1_000;
 // Minimum time the system has to be running to start changing parameters, measured in millis.
-const MININUM_RUNNING_TIME: u128 = 100;
-// When checking if we need to decrease current system level, we do not want to decrease level as soon
-// current input rate is lower than current threshold because if the input load is close to a certain threshold,
-// the level will be increasing and decreasing very frequently. For example, if the current threshold is 10_000,
-// the input rate has to be lower that 10_000 * THRESHOLD_FACTOR for the system level to go back to previous state.
-const THRESHOLD_FACTOR: f64 = 0.9;
+const MININUM_RUNNING_TIME: u64 = 100;
 
 pub type Transaction = Vec<u8>;
 pub type Batch = Vec<Transaction>;
@@ -54,13 +50,15 @@ pub struct BatchMaker {
     current_batch_size: usize,
     /// A network sender to broadcast the batches to the other workers.
     network: ReliableSender,
-
     parameter_optimizer: ParameterOptimizer,
+    /// If the learning flag is set, do not change parameters based on input load because we 
+    /// are trying to test the latency for a particular input rate and system level
+    learning: bool,
 }
 
 pub struct InputRate {
     // Queue of previous tranasctions, used to remove old transactions to calculate new rate.
-    transaction_queue: VecDeque<(u128, u64)>,
+    transaction_queue: VecDeque<(u64, u64)>,
     // Current input rate (transactions / sec).
     transaction_rate: u64,
 }
@@ -69,36 +67,36 @@ pub struct ParameterOptimizer {
     // Current input rate.
     input_rate: InputRate,
     // Time when the system started.
-    system_start_time: u128,
+    system_start_time: u64,
     // Current system level. Lower levels optimize for latency, higher levels for throughput.
     current_level: usize,
     // Max level the system can have. Currently it is only 1, will be increased in the future.
-    max_level: usize,
-    // Batch size for each system level.
     batch_sizes: Vec<usize>,
-    // Input rate threshold at which to increase system level (if it is not the max level).
-    transaction_rate_thresholds: Vec<usize>,
     // Output channel to inform proposer about changing system level.
     tx_change_level: Sender<Vec<u8>>,
+    // Maps input rate to system level
+    config_map: HashMap<u64, usize>,
+    // Known input rates sorted in descending order.
+    sorted_input_rates: Vec<u64>,
+    // Total number of workers
+    total_worker_count: usize,
 }
 
 impl ParameterOptimizer {
-    pub fn new(tx_change_level: Sender<Vec<u8>>, total_worker_count: usize) -> Self {
-        info!("total worker count: {}", total_worker_count);
+    pub fn new(tx_change_level: Sender<Vec<u8>>, total_worker_count: usize, level: usize) -> Self {
+        info!("Total worker count: {}", total_worker_count);
         Self {
             input_rate: InputRate::new(),
             system_start_time: SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .expect("Failed to measure time")
-                    .as_millis(),
-            current_level: 0,
-            max_level: 2,
+                    .as_millis() as u64,
+            current_level: level,
             batch_sizes: vec![1, 2_000, 600_000],
-            transaction_rate_thresholds: vec![10_000, 40_000, 0]
-                .iter()
-                .map(|&size| size / total_worker_count)
-                .collect(),
-            tx_change_level
+            tx_change_level,
+            config_map: HashMap::new(),
+            sorted_input_rates: Vec::new(),
+            total_worker_count,
         }
     }
 
@@ -106,42 +104,39 @@ impl ParameterOptimizer {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Failed to measure time")
-            .as_millis();
+            .as_millis() as u64;
         if self.system_start_time + MININUM_RUNNING_TIME < now {
             let current_rate = self.get_current_rate();
-            // Check if we need to increase
-            if current_rate > self.transaction_rate_thresholds[self.current_level] && self.current_level < self.max_level {
-                info!("Increasing system level to: {}", self.current_level + 1);
-                self.current_level += 1;
-                *batch_size = self.batch_sizes[self.current_level];
 
-                self.change_proposer_level(self.current_level).await;
-            }
-            // Check if we need to decrease
-            if self.current_level > 0 && (current_rate as f64) < self.transaction_rate_thresholds[self.current_level] as f64 * THRESHOLD_FACTOR {
-                info!("Decreasing system level to: {}", self.current_level - 1);
-                self.current_level -= 1;
-                *batch_size = self.batch_sizes[self.current_level];
-
-                self.change_proposer_level(self.current_level).await;
+            for &input_rate in self.sorted_input_rates.iter() {
+                if current_rate > input_rate / self.total_worker_count as u64 {
+                    if self.config_map[&input_rate] != self.current_level {
+                        self.change_level(self.config_map[&input_rate], batch_size).await;
+                    }
+                    break;
+                }
             }
         }
     }
 
-    fn get_current_rate(&self) -> usize {
+    fn get_current_rate(&self) -> u64 {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Failed to measure time")
-            .as_millis() ;
+            .as_millis() as u64;
         let diff = now - self.system_start_time;
         if diff < ONE_SECOND_IN_MILLIS {
-            return (self.input_rate.transaction_rate as u128 / diff * ONE_SECOND_IN_MILLIS) as usize;
+            return self.input_rate.transaction_rate / diff * ONE_SECOND_IN_MILLIS;
         }
-        self.input_rate.transaction_rate as usize
+        self.input_rate.transaction_rate
     }
 
-    async fn change_proposer_level(&mut self, new_level: usize) {
-        // Increase the level of proposerq
+    async fn change_level(&mut self, new_level: usize, batch_size: &mut usize) {
+        info!("Changing system level to {}", new_level);
+        self.current_level = new_level;
+        *batch_size = self.batch_sizes[new_level];
+
+        // Change the level of proposer
         let message = WorkerPrimaryMessage::ChangeLevel(new_level);
         let message = bincode::serialize(&message)
             .expect("Failed to serialize change level message");
@@ -152,6 +147,30 @@ impl ParameterOptimizer {
             .expect("Failed to send level change to proposer");
     }
 
+    fn load_config(&mut self) {
+        match fs::read_to_string("system_level_config.txt") {
+            Ok(data) => {
+                for line in data.lines() {
+                    let mut split_line = line.split_whitespace();
+                    if let (Some(input_rate), Some(level)) = (split_line.next(), split_line.next()) {
+                        self.config_map.insert(
+                            input_rate.parse::<u64>().unwrap(),
+                            level.parse::<usize>().unwrap()
+                        );
+                    }
+                }
+            },
+            Err(_) => {
+                // Default config
+                self.config_map.insert(1, 0);
+                self.config_map.insert(8_000, 1);
+                self.config_map.insert(20_000, 2);
+            }
+        };
+
+        self.sorted_input_rates = self.config_map.keys().cloned().collect();
+        self.sorted_input_rates.sort_by(|a, b| b.cmp(a));
+    }
 }
 
 impl InputRate {
@@ -166,7 +185,7 @@ impl InputRate {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Failed to measure time")
-            .as_millis();
+            .as_millis() as u64;
         self.transaction_queue.push_back((now, size));
         self.transaction_rate += size;
 
@@ -186,6 +205,8 @@ impl BatchMaker {
         tx_change_level: Sender<Vec<u8>>,
         workers_addresses: Vec<(PublicKey, SocketAddr)>,
         total_worker_count: usize,
+        level: usize,
+        learning: bool,
     ) {
         tokio::spawn(async move {
             Self {
@@ -197,7 +218,8 @@ impl BatchMaker {
                 current_batch: Batch::with_capacity(batch_size * 2),
                 current_batch_size: 0,
                 network: ReliableSender::new(),
-                parameter_optimizer: ParameterOptimizer::new(tx_change_level, total_worker_count),
+                parameter_optimizer: ParameterOptimizer::new(tx_change_level, total_worker_count, level),
+                learning,
             }
             .run()
             .await;
@@ -208,8 +230,7 @@ impl BatchMaker {
     async fn run(&mut self) {
         let timer = sleep(Duration::from_millis(self.max_batch_delay));
         tokio::pin!(timer);
-        self.batch_size = self.parameter_optimizer.batch_sizes[0];
-        info!("batch size: {}", self.batch_size);
+        self.parameter_optimizer.load_config();
 
         loop {
             tokio::select! {
@@ -243,10 +264,12 @@ impl BatchMaker {
         let size = self.current_batch_size;
 
         let transaction_count = self.current_batch.len();
-        self.parameter_optimizer
-           .input_rate
-           .add_transactions(transaction_count as u64);
-        self.parameter_optimizer.adjust_parameters(&mut self.batch_size).await;
+        if !self.learning {
+            self.parameter_optimizer
+                .input_rate
+                .add_transactions(transaction_count as u64);
+            self.parameter_optimizer.adjust_parameters(&mut self.batch_size).await;
+        }
 
         // Look for sample txs (they all start with 0) and gather their txs id (the next 8 bytes).
         #[cfg(feature = "benchmark")]

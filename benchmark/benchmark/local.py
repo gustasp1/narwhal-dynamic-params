@@ -15,6 +15,8 @@ class LocalBench:
 
     def __init__(self, bench_parameters_dict, node_parameters_dict):
         try:
+            self.bench_parameters_dict = bench_parameters_dict
+            self.node_parameters_dict = node_parameters_dict
             self.bench_parameters = BenchParameters(bench_parameters_dict)
             self.node_parameters = NodeParameters(node_parameters_dict)
         except ConfigError as e:
@@ -34,8 +36,36 @@ class LocalBench:
             subprocess.run(cmd, stderr=subprocess.DEVNULL)
         except subprocess.SubprocessError as e:
             raise BenchError('Failed to kill testbed', e)
+        
+    def learn(self):
+        input_rates = [1_000, 20_000, 50_000]
+        levels = [0, 1]
+        default_level = 1
+        level_config = {}
 
-    def run(self, debug=False):
+        self.bench_parameters_dict["duration"] = 1
+        total_runs = len(input_rates) * len(levels)
+        counter = 1
+
+        for input_rate in input_rates:
+            for level in levels:
+                Print.info(f"Running phase {counter} / {total_runs}")
+                counter += 1
+                level_config[input_rate] = (float('inf'), default_level)
+                self.bench_parameters_dict["input_rate"] = input_rate
+                self.bench_parameters = BenchParameters(self.bench_parameters_dict)
+                self.run(level, learning=1, debug=True)
+
+                latency = LogParser.process(PathMaker.logs_path(), faults=self.faults)._end_to_end_latency()
+                if latency < level_config[input_rate][0]:
+                    level_config[input_rate] = (latency, level)
+
+        with open("system_level_config.txt", "w") as f:
+            for input_rate, (_, level) in level_config.items():
+                f.write(f"{input_rate} {level}\n")
+
+
+    def run(self, level=1, learning=0, debug=False):
         assert isinstance(debug, bool)
         Print.heading('Starting local benchmark')
 
@@ -108,6 +138,8 @@ class LocalBench:
                         PathMaker.db_path(i, id),
                         PathMaker.parameters_file(),
                         id,  # The worker's id.
+                        level,
+                        learning,
                         debug=debug
                     )
                     log_file = PathMaker.worker_log_file(i, id)
