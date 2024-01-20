@@ -298,6 +298,71 @@ class Bench:
         # Parse logs and return the parser.
         Print.info("Parsing logs and computing performance...")
         return LogParser.process(PathMaker.logs_path(), faults=faults)
+    
+    def learn(self, bench_parameters_dict, node_parameters_dict, debug=True):
+        Print.heading("Starting remote learning")
+        input_rates = [2_000, 15_000, 50_000]
+        levels = [0, 1, 2]
+        default_level = 1
+        level_config = {}
+
+        try:
+            bench_parameters = BenchParameters(bench_parameters_dict)
+            node_parameters = NodeParameters(node_parameters_dict)
+        except ConfigError as e:
+            raise BenchError("Invalid nodes or bench parameters", e)
+
+        # Select which hosts to use.
+        selected_hosts = self._select_hosts(bench_parameters)
+        if not selected_hosts:
+            Print.warn("There are not enough instances available")
+            return
+
+        # Update nodes.
+        try:
+            self._update(selected_hosts, bench_parameters.collocate)
+        except (GroupException, ExecutionError) as e:
+            e = FabricError(e) if isinstance(e, GroupException) else e
+            raise BenchError("Failed to update nodes", e)
+
+        # Upload all configuration files.
+        try:
+            committee = self._config(selected_hosts, node_parameters, bench_parameters)
+        except (subprocess.SubprocessError, GroupException) as e:
+            e = FabricError(e) if isinstance(e, GroupException) else e
+            raise BenchError("Failed to configure nodes", e)
+
+        bench_parameters_dict["duration"] = 20
+        total_runs = len(input_rates) * len(levels)
+        counter = 1
+
+        for input_rate in input_rates:
+            level_config[input_rate] = (float('inf'), default_level)
+            for level in levels:
+                Print.info(f"Running phase {counter} / {total_runs}")
+                counter += 1
+                bench_parameters_dict["input_rate"] = input_rate
+                bench_parameters = BenchParameters(self.bench_parameters_dict)
+                try:
+                    self._run_single(input_rate, committee, bench_parameters, debug)
+                except (
+                    subprocess.SubprocessError,
+                    GroupException,
+                    ParseError,
+                ) as e:
+                    self.kill(hosts=selected_hosts)
+                    if isinstance(e, GroupException):
+                        e = FabricError(e)
+                    Print.error(BenchError("Learning failed", e))
+                    continue
+
+                latency = self._logs(committee, bench_parameters.faults)._end_to_end_latency()
+                if latency < level_config[input_rate][0]:
+                    level_config[input_rate] = (latency, level)
+
+        with open("system_level_config.txt", "w") as f:
+            for input_rate, (_, level) in level_config.items():
+                f.write(f"{input_rate} {level}\n")
 
     def run(self, bench_parameters_dict, node_parameters_dict, debug=False):
         assert isinstance(debug, bool)

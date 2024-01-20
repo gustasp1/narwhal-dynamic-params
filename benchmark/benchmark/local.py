@@ -48,10 +48,10 @@ class LocalBench:
         counter = 1
 
         for input_rate in input_rates:
+            level_config[input_rate] = (float('inf'), default_level)
             for level in levels:
                 Print.info(f"Running phase {counter} / {total_runs}")
                 counter += 1
-                level_config[input_rate] = (float('inf'), default_level)
                 self.bench_parameters_dict["input_rate"] = input_rate
                 self.bench_parameters = BenchParameters(self.bench_parameters_dict)
                 self.run(level, learning=1, debug=True)
