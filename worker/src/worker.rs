@@ -14,7 +14,9 @@ use log::{error, info, warn};
 use network::{MessageHandler, Receiver, Writer};
 use primary::PrimaryWorkerMessage;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::error::Error;
+use std::fs;
 use store::Store;
 use tokio::sync::mpsc::{channel, Sender};
 
@@ -254,6 +256,31 @@ impl Worker {
             "Worker {} listening to worker messages on {}",
             self.id, address
         );
+    }
+
+    pub fn import_level_config() -> HashMap<u64, usize> {
+        let mut config_map = HashMap::new();
+        match fs::read_to_string("system_level_config.txt") {
+            Ok(data) => {
+                for line in data.lines() {
+                    let mut split_line = line.split_whitespace();
+                    if let (Some(input_rate), Some(level)) = (split_line.next(), split_line.next()) {
+                        config_map.insert(
+                            input_rate.parse::<u64>().unwrap(),
+                            level.parse::<usize>().unwrap()
+                        );
+                    }
+                }
+            },
+            Err(_) => {
+                // Default config
+                config_map.insert(1, 0);
+                config_map.insert(8_000, 1);
+                config_map.insert(20_000, 2);
+            }
+        };
+
+        config_map
     }
 }
 

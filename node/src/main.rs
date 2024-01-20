@@ -10,6 +10,7 @@ use primary::{Certificate, Primary};
 use store::Store;
 use tokio::sync::mpsc::{channel, Receiver};
 use worker::Worker;
+use log::info;
 
 /// The default channel capacity.
 pub const CHANNEL_CAPACITY: usize = 1_000;
@@ -140,6 +141,10 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                     "1" => true,
                     _ => false,
                 };
+            let level_config = Worker::import_level_config();
+            for (key, value) in level_config.into_iter() {
+                info!("level config {} / {}", key, value);
+            }
             Worker::spawn(keypair.name, id, committee, parameters, store, total_worker_count, level, learning);
         }
         _ => unreachable!(),
