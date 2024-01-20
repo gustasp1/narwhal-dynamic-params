@@ -209,7 +209,6 @@ class Bench:
 
     def _run_single(self, rate, committee, bench_parameters, level=1, learning=0, debug=False):
         faults = bench_parameters.faults
-        print("here2", learning)
 
         # Kill any potentially unfinished run and delete logs.
         hosts = committee.ips()
