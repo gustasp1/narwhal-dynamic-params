@@ -128,6 +128,7 @@ impl ParameterOptimizer {
             .expect("Failed to measure time")
             .as_millis() as u64;
         let diff = now - self.system_start_time;
+        info!("diff {} {}", diff, self.input_rate.transaction_rate);
         if diff < ONE_SECOND_IN_MILLIS {
             return self.input_rate.transaction_rate / diff * ONE_SECOND_IN_MILLIS;
         }
@@ -190,6 +191,8 @@ impl InputRate {
             .as_millis() as u64;
         self.transaction_queue.push_back((now, size));
         self.transaction_rate += size;
+
+        info!("adding transactions {}", size);
 
         // remove old measurements
         while self.transaction_queue.len() > 0 && self.transaction_queue.front().unwrap().0 + ONE_SECOND_IN_MILLIS < now {
