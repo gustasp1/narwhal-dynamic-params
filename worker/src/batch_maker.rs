@@ -100,7 +100,7 @@ impl ParameterOptimizer {
         }
     }
 
-    pub async fn adjust_parameters(&mut self, batch_size: &mut usize) {
+    pub async fn adjust_parameters(&mut self) {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Failed to measure time")
@@ -111,7 +111,7 @@ impl ParameterOptimizer {
             for &input_rate in self.sorted_input_rates.iter() {
                 if current_rate > input_rate / self.total_worker_count as u64 {
                     if self.config_map[&input_rate] != self.current_level {
-                        self.change_level(self.config_map[&input_rate], batch_size).await;
+                        self.change_level(self.config_map[&input_rate]).await;
                     }
                     break;
                 }
@@ -131,10 +131,9 @@ impl ParameterOptimizer {
         self.input_rate.transaction_rate
     }
 
-    async fn change_level(&mut self, new_level: usize, batch_size: &mut usize) {
+    async fn change_level(&mut self, new_level: usize) {
         info!("Changing system level to {}", new_level);
         self.current_level = new_level;
-        *batch_size = self.batch_sizes[new_level];
 
         // Change the level of proposer
         let message = WorkerPrimaryMessage::ChangeLevel(new_level);
@@ -238,7 +237,7 @@ impl BatchMaker {
                 Some(transaction) = self.rx_transaction.recv() => {
                     self.current_batch_size += transaction.len();
                     self.current_batch.push(transaction);
-                    if self.current_batch_size >= self.batch_size {
+                    if self.current_batch_size >= self.parameter_optimizer.batch_sizes[self.parameter_optimizer.current_level] {
                         self.seal().await;
                         timer.as_mut().reset(Instant::now() + Duration::from_millis(self.max_batch_delay));
                     }
@@ -268,7 +267,7 @@ impl BatchMaker {
             self.parameter_optimizer
                 .input_rate
                 .add_transactions(transaction_count as u64);
-            self.parameter_optimizer.adjust_parameters(&mut self.batch_size).await;
+            self.parameter_optimizer.adjust_parameters().await;
         }
 
         // Look for sample txs (they all start with 0) and gather their txs id (the next 8 bytes).

@@ -56,7 +56,7 @@ def learnlocal(ctx, debug=True):
         'max_batch_delay': 200  # ms
     }
     try:
-        ret = LocalBench(bench_params, node_params).learn(learn=1)
+        ret = LocalBench(bench_params, node_params).learn()
     except BenchError as e:
         Print.error(e)
 
