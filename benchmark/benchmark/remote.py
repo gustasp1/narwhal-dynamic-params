@@ -206,8 +206,9 @@ class Bench:
 
         return committee
 
-    def _run_single(self, rate, committee, bench_parameters, debug=False):
+    def _run_single(self, rate, committee, bench_parameters, level=1, learning=0, debug=False):
         faults = bench_parameters.faults
+        print("here2", learning)
 
         # Kill any potentially unfinished run and delete logs.
         hosts = committee.ips()
@@ -256,6 +257,8 @@ class Bench:
                     PathMaker.db_path(i, id),
                     PathMaker.parameters_file(),
                     id,  # The worker's id.
+                    level,
+                    learning,
                     debug=debug,
                 )
                 log_file = PathMaker.worker_log_file(i, id)
@@ -299,9 +302,10 @@ class Bench:
         Print.info("Parsing logs and computing performance...")
         return LogParser.process(PathMaker.logs_path(), faults=faults)
     
-    def learn(self, bench_parameters_dict, node_parameters_dict, debug=True):
+    def learn(self, bench_parameters_dict, node_parameters_dict, learning=0, debug=True):
         Print.heading("Starting remote learning")
         input_rates = [2_000, 15_000, 50_000]
+        print("here1", learning)
         levels = [0, 1, 2]
         default_level = 1
         level_config = {}
@@ -344,7 +348,7 @@ class Bench:
                 bench_parameters_dict["input_rate"] = input_rate
                 bench_parameters = BenchParameters(bench_parameters_dict)
                 try:
-                    self._run_single(input_rate, committee, bench_parameters, debug)
+                    self._run_single(input_rate, committee, bench_parameters, level, learning, debug)
                 except (
                     subprocess.SubprocessError,
                     GroupException,
@@ -357,6 +361,7 @@ class Bench:
                     continue
 
                 latency = self._logs(committee, bench_parameters.faults)._end_to_end_latency()
+                print(f"input rate {input_rate}, level {level}, latency {latency}")
                 if latency < level_config[input_rate][0]:
                     level_config[input_rate] = (latency, level)
 

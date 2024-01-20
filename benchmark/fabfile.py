@@ -56,7 +56,7 @@ def learnlocal(ctx, debug=True):
         'max_batch_delay': 200  # ms
     }
     try:
-        ret = LocalBench(bench_params, node_params).learn()
+        ret = LocalBench(bench_params, node_params).learn(learn=1)
     except BenchError as e:
         Print.error(e)
 
@@ -79,7 +79,7 @@ def destroy(ctx):
 
 
 @task
-def start(ctx, max=2):
+def start(ctx, max=1):
     ''' Start at most `max` machines per data center '''
     try:
         InstanceManager.make().start_instances(max)
@@ -137,7 +137,7 @@ def remote(ctx, debug=False):
         'max_batch_delay': 200  # ms
     }
     try:
-        Bench(ctx).run(bench_params, node_params, debug)
+        Bench(ctx).run(bench_params, node_params, debug=debug)
     except BenchError as e:
         Print.error(e)
 
@@ -162,7 +162,7 @@ def learnremote(ctx, debug=True):
         'max_batch_delay': 200  # ms
     }
     try:
-        Bench(ctx).learn(bench_params, node_params, debug)
+        Bench(ctx).learn(bench_params, node_params, 1, debug)
     except BenchError as e:
         Print.error(e)
 

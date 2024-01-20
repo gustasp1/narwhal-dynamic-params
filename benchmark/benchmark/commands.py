@@ -41,6 +41,7 @@ class CommandMaker:
         assert isinstance(committee, str)
         assert isinstance(parameters, str)
         assert isinstance(debug, bool)
+        print("leeeearning", level, learning)
         v = '-vvv' if debug else '-vv'
         return (f'./node {v} run --keys {keys} --committee {committee} '
                 f'--store {store} --parameters {parameters} worker --id {id} --level {level} --learning {learning}')
