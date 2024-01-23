@@ -38,18 +38,15 @@ class LocalBench:
             raise BenchError('Failed to kill testbed', e)
         
     def learn(self):
-        input_rates = [1_000, 20_000, 50_000]
-        levels = [0, 1]
         default_level = 1
         level_config = {}
 
-        self.bench_parameters_dict["duration"] = 1
-        total_runs = len(input_rates) * len(levels)
+        total_runs = len(self.bench_parameters.rate) * len(self.bench_parameters.levels)
         counter = 1
 
-        for input_rate in input_rates:
+        for input_rate in self.bench_parameters.rate:
             level_config[input_rate] = (float('inf'), default_level)
-            for level in levels:
+            for level in self.bench_parameters.levels:
                 Print.info(f"Running phase {counter} / {total_runs}")
                 counter += 1
                 self.bench_parameters_dict["input_rate"] = input_rate

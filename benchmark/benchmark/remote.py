@@ -304,9 +304,6 @@ class Bench:
     
     def learn(self, bench_parameters_dict, node_parameters_dict, learning=0, debug=True):
         Print.heading("Starting remote learning")
-        input_rates = [2_000, 15_000, 50_000]
-        print("here1", learning)
-        levels = [0, 1, 2]
         default_level = 1
         level_config = {}
 
@@ -336,13 +333,12 @@ class Bench:
             e = FabricError(e) if isinstance(e, GroupException) else e
             raise BenchError("Failed to configure nodes", e)
 
-        bench_parameters_dict["duration"] = 20
-        total_runs = len(input_rates) * len(levels)
+        total_runs = len(bench_parameters.rate) * len(bench_parameters.levels)
         counter = 1
 
-        for input_rate in input_rates:
+        for input_rate in bench_parameters.rate:
             level_config[input_rate] = (float('inf'), default_level)
-            for level in levels:
+            for level in bench_parameters.levels:
                 Print.info(f"Running phase {counter} / {total_runs}")
                 counter += 1
                 bench_parameters_dict["input_rate"] = input_rate

@@ -42,9 +42,10 @@ def learnlocal(ctx, debug=True):
         'faults': 0,
         'nodes': 4,
         'workers': 1,
-        'rate': 50_000,
         'tx_size': 512,
-        'duration': 5,
+        'duration': 2,
+        'rate': [1_000, 5_000],
+        'levels': [0, 1, 2],
     }
     node_params = {
         'header_size': 1_000,  # bytes
@@ -124,7 +125,7 @@ def remote(ctx, debug=False):
         'collocate': True,
         'rate': [50_000, 75_000, 110_000, 160_000],
         'tx_size': 512,
-        'duration': 100,
+        'duration': 10,
         'runs': 1,
     }
     node_params = {
@@ -148,9 +149,10 @@ def learnremote(ctx, debug=True):
         'faults': 0,
         'nodes': 4,
         'workers': 1,
-        'rate': 50_000,
+        'rate': [50_000, 75_000, 110_000, 160_000],
+        'duration': 10,
+        'levels': [0, 1, 2],
         'tx_size': 512,
-        'duration': 5,
     }
     node_params = {
         'header_size': 1_000,  # bytes

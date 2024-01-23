@@ -215,6 +215,8 @@ class BenchParameters:
            
             self.duration = int(json['duration'])
 
+            self.levels = [int(x) for x in json['levels']]
+
             self.runs = int(json['runs']) if 'runs' in json else 1
         except KeyError as e:
             raise ConfigError(f'Malformed bench parameters: missing key {e}')
