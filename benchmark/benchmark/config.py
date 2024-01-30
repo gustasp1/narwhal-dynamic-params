@@ -215,7 +215,10 @@ class BenchParameters:
            
             self.duration = int(json['duration'])
 
-            self.levels = [int(x) for x in json['levels']]
+            if 'levels' in json:
+                self.levels = [int(x) for x in json['levels']]
+            else:
+                self.levels = [0,1,2]
 
             self.runs = int(json['runs']) if 'runs' in json else 1
         except KeyError as e:
