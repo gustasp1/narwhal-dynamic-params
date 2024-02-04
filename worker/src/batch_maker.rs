@@ -329,6 +329,7 @@ impl BatchMaker {
                 handlers: names.into_iter().zip(handlers.into_iter()).collect(),
                 transaction_count,
                 mean_start_time,
+                level: self.parameter_optimizer.current_level,
             })
             .await
             .expect("Failed to deliver batch");
