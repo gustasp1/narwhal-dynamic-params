@@ -91,7 +91,7 @@ impl ParameterOptimizer {
                     .duration_since(UNIX_EPOCH)
                     .expect("Failed to measure time")
                     .as_millis() as u64,
-            current_level: level,
+            current_level: 2,
             batch_sizes: vec![1, 2_000, 500_000],
             tx_change_level,
             config_map: HashMap::new(),
@@ -262,7 +262,12 @@ impl BatchMaker {
         let size = self.current_batch_size;
 
         let transaction_count = self.current_batch.len();
-
+        if !self.learning {
+            self.parameter_optimizer
+                .input_rate
+                .add_transactions(transaction_count as u64);
+            self.parameter_optimizer.adjust_parameters().await;
+        }
 
         // Look for sample txs (they all start with 0) and gather their txs id (the next 8 bytes).
         #[cfg(feature = "benchmark")]
@@ -279,11 +284,11 @@ impl BatchMaker {
 
         let mut mean_start_time = 0;
 
-        if let (Some(first_transaction), Some(last_transaction)) = (batch.first(), batch.last()) {
-            let first_transaction_timestamp = BigEndian::read_u64(&first_transaction[9..17]);
-            let last_transaction_timestamp = BigEndian::read_u64(&last_transaction[9..17]);
-            mean_start_time = (first_transaction_timestamp + last_transaction_timestamp) / 2;
-        }
+        // if let (Some(first_transaction), Some(last_transaction)) = (batch.first(), batch.last()) {
+        //     let first_transaction_timestamp = BigEndian::read_u64(&first_transaction[9..17]);
+        //     let last_transaction_timestamp = BigEndian::read_u64(&last_transaction[9..17]);
+        //     mean_start_time = (first_transaction_timestamp + last_transaction_timestamp) / 2;
+        // }
 
 
         let message = WorkerMessage::Batch(batch, transaction_count, mean_start_time);
@@ -327,12 +332,5 @@ impl BatchMaker {
             })
             .await
             .expect("Failed to deliver batch");
-
-        if !self.learning {
-            self.parameter_optimizer
-                .input_rate
-                .add_transactions(transaction_count as u64);
-            self.parameter_optimizer.adjust_parameters().await;
-        }
     }
 }
