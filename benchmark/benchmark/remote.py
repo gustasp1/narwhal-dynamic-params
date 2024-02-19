@@ -270,7 +270,7 @@ class Bench:
             sleep(ceil(duration / 20))
         self.kill(hosts=hosts, delete_logs=False)
 
-    def _logs(self, committee, faults):
+    def _logs(self, committee, faults, param_type='static'):
         # Delete local logs (if any).
         cmd = CommandMaker.clean_logs()
         subprocess.run([cmd], shell=True, stderr=subprocess.DEVNULL)
@@ -300,7 +300,7 @@ class Bench:
 
         # Parse logs and return the parser.
         Print.info("Parsing logs and computing performance...")
-        return LogParser.process(PathMaker.logs_path(), faults=faults)
+        return LogParser.process(PathMaker.logs_path(), faults=faults, param_type=param_type)
     
     def learn(self, bench_parameters_dict, node_parameters_dict, learning=0, debug=True):
         Print.heading("Starting remote learning")
@@ -365,7 +365,7 @@ class Bench:
             for input_rate, (_, level) in level_config.items():
                 f.write(f"{input_rate} {level}\n")
 
-    def run(self, bench_parameters_dict, node_parameters_dict, debug=False):
+    def run(self, bench_parameters_dict, node_parameters_dict, param_type="static", debug=False):
         assert isinstance(debug, bool)
         Print.heading("Starting remote benchmark")
         try:
@@ -393,6 +393,8 @@ class Bench:
         except (subprocess.SubprocessError, GroupException) as e:
             e = FabricError(e) if isinstance(e, GroupException) else e
             raise BenchError("Failed to configure nodes", e)
+        
+        learning = 1 if param_type == 'static' else 0
 
         # Run benchmarks.
         for n in bench_parameters.nodes:
@@ -406,10 +408,10 @@ class Bench:
                 for i in range(bench_parameters.runs):
                     Print.heading(f"Run {i+1}/{bench_parameters.runs}")
                     try:
-                        self._run_single(r, committee_copy, bench_parameters, debug)
+                        self._run_single(r, committee_copy, bench_parameters, learning=learning, debug=debug)
 
                         faults = bench_parameters.faults
-                        logger = self._logs(committee_copy, faults)
+                        logger = self._logs(committee_copy, faults, param_type)
                         logger.print(
                             PathMaker.result_file(
                                 faults,
@@ -418,6 +420,7 @@ class Bench:
                                 bench_parameters.collocate,
                                 r,
                                 bench_parameters.tx_size,
+                                param_type,
                             )
                         )
                     except (
