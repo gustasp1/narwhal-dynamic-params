@@ -80,7 +80,7 @@ def destroy(ctx):
 
 
 @task
-def start(ctx, max=1):
+def start(ctx, max=2):
     ''' Start at most `max` machines per data center '''
     try:
         InstanceManager.make().start_instances(max)
@@ -120,12 +120,12 @@ def remote(ctx, debug=False):
     ''' Run benchmarks on AWS '''
     bench_params = {
         'faults': 0,
-        'nodes': [5],
+        'nodes': [10],
         'workers': 1,
         'collocate': True,
-        'rate': [50_000, 75_000, 110_000, 160_000],
+        'rate': [2_000, 7_000, 9_000, 11_000, 13_000, 25_000, 40_000],
         'tx_size': 512,
-        'duration': 10,
+        'duration': 40,
         'runs': 1,
     }
     node_params = {
