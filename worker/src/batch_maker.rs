@@ -87,10 +87,7 @@ impl ParameterOptimizer {
         info!("Total worker count: {}", total_worker_count);
         Self {
             input_rate: InputRate::new(),
-            system_start_time: SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .expect("Failed to measure time")
-                    .as_millis() as u64,
+            system_start_time: 0,
             current_level: 2,
             batch_sizes: vec![1, 2_000, 500_000],
             tx_change_level,
@@ -236,6 +233,12 @@ impl BatchMaker {
                 Some(transaction) = self.rx_transaction.recv() => {
                     self.current_batch_size += transaction.len();
                     self.current_batch.push(transaction);
+                    if self.parameter_optimizer.system_start_time == 0 {
+                        self.parameter_optimizer.system_start_time = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .expect("Failed to measure time")
+                        .as_millis() as u64;
+                    }
                     if self.current_batch_size >= self.parameter_optimizer.batch_sizes[self.parameter_optimizer.current_level] {
                         self.seal().await;
                         timer.as_mut().reset(Instant::now() + Duration::from_millis(self.max_batch_delay));
