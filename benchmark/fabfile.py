@@ -116,16 +116,16 @@ def install(ctx):
 
 
 @task
-def remote(ctx, debug=False, param_type='static'):
+def remote(ctx, debug=False, param_type='dynamic'):
     ''' Run benchmarks on AWS '''
     bench_params = {
         'faults': 0,
         'nodes': [10],
         'workers': 1,
         'collocate': True,
-        'rate': [13_000, 25_000, 40_000, 60_000],
+        'rate': [25_000, 40_000, 60_000],
         'tx_size': 512,
-        'duration': 60,
+        'duration': 90,
         'runs': 1,
     }
     node_params = {

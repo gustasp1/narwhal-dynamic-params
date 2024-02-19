@@ -44,6 +44,7 @@ class CommandMaker:
         v = '-vvv' if debug else '-vv'
         return (f'./node {v} run --keys {keys} --committee {committee} '
                 f'--store {store} --parameters {parameters} worker --id {id} --level {level} --learning {learning}')
+                # f'--store {store} --parameters {parameters} worker --id {id}')
 
     @staticmethod
     def run_client(address, size, rate, nodes):

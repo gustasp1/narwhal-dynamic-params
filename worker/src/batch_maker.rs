@@ -92,7 +92,7 @@ impl ParameterOptimizer {
                     .expect("Failed to measure time")
                     .as_millis() as u64,
             current_level: level,
-            batch_sizes: vec![1, 3_000, 200_000],
+            batch_sizes: vec![1, 2_000, 500_000],
             tx_change_level,
             config_map: HashMap::new(),
             sorted_input_rates: Vec::new(),
