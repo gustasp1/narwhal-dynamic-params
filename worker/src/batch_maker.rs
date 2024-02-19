@@ -262,12 +262,7 @@ impl BatchMaker {
         let size = self.current_batch_size;
 
         let transaction_count = self.current_batch.len();
-        if !self.learning {
-            self.parameter_optimizer
-                .input_rate
-                .add_transactions(transaction_count as u64);
-            self.parameter_optimizer.adjust_parameters().await;
-        }
+
 
         // Look for sample txs (they all start with 0) and gather their txs id (the next 8 bytes).
         #[cfg(feature = "benchmark")]
@@ -283,7 +278,6 @@ impl BatchMaker {
         let batch: Vec<_> = self.current_batch.drain(..).collect();
 
         let mut mean_start_time = 0;
-        let transaction_count = batch.len();
 
         if let (Some(first_transaction), Some(last_transaction)) = (batch.first(), batch.last()) {
             let first_transaction_timestamp = BigEndian::read_u64(&first_transaction[9..17]);
@@ -333,5 +327,12 @@ impl BatchMaker {
             })
             .await
             .expect("Failed to deliver batch");
+
+        if !self.learning {
+            self.parameter_optimizer
+                .input_rate
+                .add_transactions(transaction_count as u64);
+            self.parameter_optimizer.adjust_parameters().await;
+        }
     }
 }
