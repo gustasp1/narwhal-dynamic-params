@@ -70,7 +70,7 @@ impl Proposer {
             .iter()
             .map(|x| x.digest())
             .collect();
-        info!("proposer header size", header_size);
+        info!("proposer header size {}", header_size);
 
         tokio::spawn(async move {
             Self {
