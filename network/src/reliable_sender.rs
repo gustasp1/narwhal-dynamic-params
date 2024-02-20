@@ -59,8 +59,8 @@ impl ReliableSender {
 
     /// Reliably send a message to a specific address.
     pub async fn send(&mut self, address: SocketAddr, data: Bytes) -> CancelHandler {
-        // let random_millis = self.rng.gen_range(0, 50);
-        // sleep(Duration::from_millis(random_millis)).await;
+        let random_millis = self.rng.gen_range(0, 50);
+        sleep(Duration::from_millis(random_millis)).await;
         let (sender, receiver) = oneshot::channel();
         self.connections
             .entry(address)
