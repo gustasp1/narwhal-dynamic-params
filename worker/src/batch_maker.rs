@@ -265,12 +265,12 @@ impl BatchMaker {
         let size = self.current_batch_size;
 
         let transaction_count = self.current_batch.len();
-        if !self.learning {
-            self.parameter_optimizer
-                .input_rate
-                .add_transactions(transaction_count as u64);
-            self.parameter_optimizer.adjust_parameters().await;
-        }
+        // if !self.learning {
+        //     self.parameter_optimizer
+        //         .input_rate
+        //         .add_transactions(transaction_count as u64);
+        //     self.parameter_optimizer.adjust_parameters().await;
+        // }
 
         // Look for sample txs (they all start with 0) and gather their txs id (the next 8 bytes).
         #[cfg(feature = "benchmark")]
