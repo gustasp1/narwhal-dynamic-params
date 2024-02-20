@@ -14,7 +14,9 @@ use log::{error, info, warn};
 use network::{MessageHandler, Receiver, Writer};
 use primary::PrimaryWorkerMessage;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::error::Error;
+use std::fs;
 use store::Store;
 use tokio::sync::mpsc::{channel, Sender};
 
@@ -35,7 +37,7 @@ pub type SerializedBatchDigestMessage = Vec<u8>;
 /// The message exchanged between workers.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum WorkerMessage {
-    Batch(Batch, u64, u64),
+    Batch(Batch, usize, u64),
     BatchRequest(Vec<Digest>, /* origin */ PublicKey),
 }
 
@@ -50,9 +52,13 @@ pub struct Worker {
     parameters: Parameters,
     /// The persistent storage.
     store: Store,
-    /// The total number of workers. total = count primaries * count workers per primary
+    /// The total number of workers. total = count primaries * count workers per primary.
     total_worker_count: usize,
-}
+    /// The system level.
+    level: usize,
+    /// Learning flag. If it is set to true, batch maker will not try to adjust parameters based on input rate.
+    learning: bool,
+}   
 
 impl Worker {
     pub fn spawn(
@@ -62,6 +68,8 @@ impl Worker {
         parameters: Parameters,
         store: Store,
         total_worker_count: usize,
+        level: usize,
+        learning: bool,
     ) {
         // Define a worker instance.
         let worker = Self {
@@ -71,6 +79,8 @@ impl Worker {
             parameters,
             store,
             total_worker_count,
+            level,
+            learning,
         };
 
         // Spawn all worker tasks.
@@ -174,6 +184,8 @@ impl Worker {
                 .map(|(name, addresses)| (*name, addresses.worker_to_worker))
                 .collect(),
             self.total_worker_count,
+            self.level,
+            self.learning,
         );
 
         // The `QuorumWaiter` waits for 2f authorities to acknowledge reception of the batch. It then forwards
@@ -245,6 +257,31 @@ impl Worker {
             self.id, address
         );
     }
+
+    pub fn import_level_config(config_file: &str) -> HashMap<u64, usize> {
+        let mut config_map = HashMap::new();
+        match fs::read_to_string(config_file) {
+            Ok(data) => {
+                for line in data.lines() {
+                    let mut split_line = line.split_whitespace();
+                    if let (Some(input_rate), Some(level)) = (split_line.next(), split_line.next()) {
+                        config_map.insert(
+                            input_rate.parse::<u64>().unwrap(),
+                            level.parse::<usize>().unwrap()
+                        );
+                    }
+                }
+            },
+            Err(_) => {
+                // Default config
+                config_map.insert(1, 0);
+                config_map.insert(8_000, 1);
+                config_map.insert(20_000, 2);
+            }
+        };
+
+        config_map
+    }
 }
 
 /// Defines how the network receiver handles incoming transactions.
@@ -285,7 +322,7 @@ impl MessageHandler for WorkerReceiverHandler {
         match bincode::deserialize(&serialized) {
             Ok(WorkerMessage::Batch(_, transaction_count, mean_start_time)) => self
                 .tx_processor
-                .send(ProcessorMessage { batch: serialized.to_vec(), transaction_count, mean_start_time})
+                .send(ProcessorMessage { batch: serialized.to_vec(), transaction_count: transaction_count as u64, mean_start_time})
                 .await
                 .expect("Failed to send batch"),
             Ok(WorkerMessage::BatchRequest(missing, requestor)) => self

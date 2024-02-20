@@ -8,6 +8,7 @@ use std::cmp::max;
 use std::collections::{HashMap, HashSet, VecDeque};
 use tokio::sync::mpsc::{Receiver, Sender};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::time::Instant;
 
 #[cfg(test)]
 #[path = "tests/consensus_tests.rs"]
@@ -85,7 +86,7 @@ impl PerformanceMetrics {
     }
 
     fn add_measurement(&mut self, digest: &Digest) {
-        let now = SystemTime::now()
+        let now: u64 = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Failed to measure time")
             .as_millis() as u64;
@@ -149,13 +150,15 @@ impl Consensus {
         // The consensus state (everything else is immutable).
         let mut state = State::new(self.genesis.clone());
         let mut performance_metrics = PerformanceMetrics::new();
-        let start_time = SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .expect("Failed to measure time")
-                            .as_millis() as u64;
+        let mut first_digest_time = Instant::now();
+        let mut certificate_received = false;
 
         // Listen to incoming certificates.
         while let Some(certificate) = self.rx_primary.recv().await {
+            if !certificate_received {
+                first_digest_time = Instant::now();
+                certificate_received = true;
+            }
             debug!("Processing {:?}", certificate);
             let round = certificate.round();
 
@@ -230,20 +233,17 @@ impl Consensus {
                 #[cfg(not(feature = "benchmark"))]
                 info!("Committed {}", certificate.header);
 
-                let now = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .expect("Failed to measure time")
-                        .as_millis() as u64;
-
                 #[cfg(feature = "benchmark")]
                 for digest in certificate.header.payload.keys() {
                     // NOTE: This log entry is used to compute performance.
                     info!("Committed {} -> {:?}", certificate.header, digest);
-
                     performance_metrics.add_measurement(digest);
-                    // info!("Current latency: {}", now - digest.mean_start_time);
-                    // info!("Current ms: {}", now);
-                    if start_time + 1_000 < now {
+
+                    let elapsed_time = first_digest_time.elapsed().as_millis() as u64;
+                    if elapsed_time < 1_000 {
+                        info!("Current TPS: {}", performance_metrics.current_tps * 1_000 / elapsed_time);
+                    }
+                    else{
                         info!("Current TPS: {}", performance_metrics.current_tps);
                     }
                 }
