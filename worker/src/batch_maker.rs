@@ -226,6 +226,7 @@ impl BatchMaker {
         let timer = sleep(Duration::from_millis(self.max_batch_delay));
         tokio::pin!(timer);
         self.parameter_optimizer.load_config();
+        self.max_batch_delay = 200;
 
         loop {
             tokio::select! {

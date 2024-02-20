@@ -172,14 +172,6 @@ impl Committee {
         2 * total_votes / 3 + 1
     }
 
-    /// Returns the stake required to reach a quorum (2f+1).
-    pub fn quorum_waiter_threshold(&self, level: usize) -> Stake {
-        // If N = 3f + 1 + k (0 <= k < 3)
-        // then (2 N + 3) / 3 = 2f + 1 + (2k + 2)/3 = 2f + 1 + k = N - f
-        let total_votes: Stake = self.authorities.values().map(|x| x.stake).sum();
-        return 2 * total_votes / 3 + 1;
-    }
-
     /// Returns the stake required to reach availability (f+1).
     pub fn validity_threshold(&self) -> Stake {
         // If N = 3f + 1 + k (0 <= k < 3)

@@ -126,7 +126,7 @@ impl Proposer {
         debug!("Dag starting at round {}", self.round);
 
         //self.header_size = self.param_config.header_sizes[0];
-        //self.max_header_delay = self.param_config.header_delays[0];
+        self.max_header_delay = 200;
 
         let timer = sleep(Duration::from_millis(self.max_header_delay));
         tokio::pin!(timer);

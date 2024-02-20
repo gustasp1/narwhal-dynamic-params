@@ -81,7 +81,7 @@ impl QuorumWaiter {
             let mut total_stake = self.stake;
             while let Some(stake) = wait_for_quorum.next().await {
                 total_stake += stake;
-                if total_stake >= self.committee.quorum_waiter_threshold(level) {
+                if total_stake >= self.committee.quorum_threshold() {
                     self.tx_batch
                         .send(ProcessorMessage { batch, transaction_count, mean_start_time})
                         .await
