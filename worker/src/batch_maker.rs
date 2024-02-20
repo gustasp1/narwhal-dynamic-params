@@ -233,12 +233,12 @@ impl BatchMaker {
                 Some(transaction) = self.rx_transaction.recv() => {
                     self.current_batch_size += transaction.len();
                     self.current_batch.push(transaction);
-                    if self.parameter_optimizer.system_start_time == 0 {
-                        self.parameter_optimizer.system_start_time = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .expect("Failed to measure time")
-                        .as_millis() as u64;
-                    }
+                    // if self.parameter_optimizer.system_start_time == 0 {
+                    //     self.parameter_optimizer.system_start_time = SystemTime::now()
+                    //     .duration_since(UNIX_EPOCH)
+                    //     .expect("Failed to measure time")
+                    //     .as_millis() as u64;
+                    // }
                     if self.current_batch_size >= self.parameter_optimizer.batch_sizes[self.parameter_optimizer.current_level] {
                         self.seal().await;
                         timer.as_mut().reset(Instant::now() + Duration::from_millis(self.max_batch_delay));
@@ -265,12 +265,12 @@ impl BatchMaker {
         let size = self.current_batch_size;
 
         let transaction_count = self.current_batch.len();
-        if !self.learning {
-            self.parameter_optimizer
-                .input_rate
-                .add_transactions(transaction_count as u64);
-            self.parameter_optimizer.adjust_parameters().await;
-        }
+        // if !self.learning {
+        //     self.parameter_optimizer
+        //         .input_rate
+        //         .add_transactions(transaction_count as u64);
+        //     self.parameter_optimizer.adjust_parameters().await;
+        // }
 
         // Look for sample txs (they all start with 0) and gather their txs id (the next 8 bytes).
         #[cfg(feature = "benchmark")]
