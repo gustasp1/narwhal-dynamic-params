@@ -18,7 +18,7 @@ def local(ctx, debug=True):
         'workers': 1,
         'rate': 50_000,
         'tx_size': 512,
-        'duration': 5,
+        'duration': 30,
     }
     node_params = {
         'header_size': 1_000,  # bytes
@@ -95,12 +95,12 @@ def remote(ctx, debug=False):
     ''' Run benchmarks on AWS '''
     bench_params = {
         'faults': 0,
-        'nodes': [5],
+        'nodes': [10],
         'workers': 1,
         'collocate': True,
-        'rate': [50_000, 75_000, 110_000, 160_000],
+        'rate': [50_000],
         'tx_size': 512,
-        'duration': 100,
+        'duration': 80,
         'runs': 1,
     }
     node_params = {

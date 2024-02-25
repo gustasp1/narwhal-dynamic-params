@@ -22,7 +22,6 @@ pub type CryptoError = ed25519::Error;
 pub struct Digest {
     pub hash: [u8; 32],
     pub transaction_count: u64,
-    pub mean_start_time: u64,
 }
 
 impl Digest {
@@ -30,15 +29,13 @@ impl Digest {
         Self {
             hash,
             transaction_count: 0,
-            mean_start_time: 0,
         }
     }
 
-    pub fn new_all_params(hash: [u8; 32], transaction_count: u64, mean_start_time: u64) -> Self {
+    pub fn new_all_params(hash: [u8; 32], transaction_count: u64) -> Self {
         Self {
             hash,
             transaction_count,
-            mean_start_time,
         }
     }
 

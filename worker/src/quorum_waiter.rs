@@ -19,8 +19,6 @@ pub struct QuorumWaiterMessage {
     pub handlers: Vec<(PublicKey, CancelHandler)>,
     /// The number of transactions in the batch.
     pub transaction_count: u64,
-    /// Mean start time of first and last batch transactions.
-    pub mean_start_time: u64,
 }
 
 /// The QuorumWaiter waits for 2f authorities to acknowledge reception of a batch.
@@ -63,7 +61,7 @@ impl QuorumWaiter {
 
     /// Main loop.
     async fn run(&mut self) {
-        while let Some(QuorumWaiterMessage { batch, handlers, transaction_count, mean_start_time}) = self.rx_message.recv().await {
+        while let Some(QuorumWaiterMessage { batch, handlers, transaction_count}) = self.rx_message.recv().await {
             let mut wait_for_quorum: FuturesUnordered<_> = handlers
                 .into_iter()
                 .map(|(name, handler)| {
@@ -80,7 +78,7 @@ impl QuorumWaiter {
                 total_stake += stake;
                 if total_stake >= self.committee.quorum_threshold() {
                     self.tx_batch
-                        .send(ProcessorMessage { batch, transaction_count, mean_start_time})
+                        .send(ProcessorMessage { batch, transaction_count})
                         .await
                         .expect("Failed to deliver batch");
                     break;

@@ -281,16 +281,7 @@ impl BatchMaker {
         self.current_batch_size = 0;
         let batch: Vec<_> = self.current_batch.drain(..).collect();
 
-        let mut mean_start_time = 0;
-
-        // if let (Some(first_transaction), Some(last_transaction)) = (batch.first(), batch.last()) {
-        //     let first_transaction_timestamp = BigEndian::read_u64(&first_transaction[9..17]);
-        //     let last_transaction_timestamp = BigEndian::read_u64(&last_transaction[9..17]);
-        //     mean_start_time = (first_transaction_timestamp + last_transaction_timestamp) / 2;
-        // }
-
-
-        let message = WorkerMessage::Batch(batch, transaction_count, mean_start_time);
+        let message = WorkerMessage::Batch(batch, transaction_count);
         let serialized = bincode::serialize(&message).expect("Failed to serialize our own batch");
 
         #[cfg(feature = "benchmark")]
@@ -326,7 +317,6 @@ impl BatchMaker {
                 batch: serialized,
                 handlers: names.into_iter().zip(handlers.into_iter()).collect(),
                 transaction_count: transaction_count as u64,
-                mean_start_time,
             })
             .await
             .expect("Failed to deliver batch");
