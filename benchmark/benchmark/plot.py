@@ -125,7 +125,7 @@ class Ploter:
         if param_type:
             param_type = param_type.group(1)
         faults = f' ({f} faulty)' if f != '0' else ''
-        params = f', {param_type} params' if param_type else ''
+        params = f', {param_type}' if param_type else ''
         return f'{x} nodes{faults}{params}'
 
     @staticmethod
