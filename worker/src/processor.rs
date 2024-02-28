@@ -16,6 +16,13 @@ pub mod processor_tests;
 /// Indicates a serialized `WorkerMessage::Batch` message.
 pub type SerializedBatchMessage = Vec<u8>;
 
+pub struct ProcessorMessage {
+    /// A serialized `WorkerMessage::Batch` message.
+    pub batch: SerializedBatchMessage,
+    /// The number of transactions in the batch.
+    pub transaction_count: usize,
+}
+
 /// Hashes and stores batches, it then outputs the batch's digest.
 pub struct Processor;
 
@@ -26,16 +33,16 @@ impl Processor {
         // The persistent storage.
         mut store: Store,
         // Input channel to receive batches.
-        mut rx_batch: Receiver<SerializedBatchMessage>,
+        mut rx_batch: Receiver<ProcessorMessage>,
         // Output channel to send out batches' digests.
         tx_digest: Sender<SerializedBatchDigestMessage>,
         // Whether we are processing our own batches or the batches of other nodes.
         own_digest: bool,
     ) {
         tokio::spawn(async move {
-            while let Some(batch) = rx_batch.recv().await {
+            while let Some(ProcessorMessage { batch, transaction_count}) = rx_batch.recv().await {
                 // Hash the batch.
-                let digest = Digest(Sha512::digest(&batch).as_slice()[..32].try_into().unwrap());
+                let digest = Digest::new_all_params(Sha512::digest(&batch).as_slice()[..32].try_into().unwrap(), transaction_count);
 
                 // Store the batch.
                 store.write(digest.to_vec(), batch).await;

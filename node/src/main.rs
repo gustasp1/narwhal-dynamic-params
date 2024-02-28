@@ -36,7 +36,7 @@ async fn main() -> Result<()> {
                 .subcommand(
                     SubCommand::with_name("worker")
                         .about("Run a single worker")
-                        .args_from_usage("--id=<INT> 'The worker id'"),
+                        .args_from_usage("--id=<INT> 'The worker id'")
                 )
                 .setting(AppSettings::SubcommandRequiredElseHelp),
         )
@@ -71,11 +71,17 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
     let committee_file = matches.value_of("committee").unwrap();
     let parameters_file = matches.value_of("parameters");
     let store_path = matches.value_of("store").unwrap();
-
+    
     // Read the committee and node's keypair from file.
     let keypair = KeyPair::import(key_file).context("Failed to load the node's keypair")?;
     let committee =
         Committee::import(committee_file).context("Failed to load the committee information")?;
+        
+    let total_worker_count: usize = committee
+        .authorities
+        .values()
+        .map(|authority| authority.workers.len())
+        .sum();
 
     // Load default parameters if none are specified.
     let parameters = match parameters_file {
@@ -121,7 +127,7 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                 .unwrap()
                 .parse::<WorkerId>()
                 .context("The worker id must be a positive integer")?;
-            Worker::spawn(keypair.name, id, committee, parameters, store);
+            Worker::spawn(keypair.name, id, committee, parameters, store, total_worker_count);
         }
         _ => unreachable!(),
     }

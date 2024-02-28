@@ -11,17 +11,19 @@ from benchmark.utils import PathMaker
 
 
 class Setup:
-    def __init__(self, faults, nodes, workers, collocate, rate, tx_size):
+    def __init__(self, faults, nodes, workers, collocate, rate, tx_size, param_type):
         self.nodes = nodes
         self.workers = workers
         self.collocate = collocate
         self.rate = rate
         self.tx_size = tx_size
         self.faults = faults
+        self.param_type = param_type
         self.max_latency = 'any'
 
     def __str__(self):
         return (
+            f' Parameter type: {self.param_type}\n'
             f' Faults: {self.faults}\n'
             f' Committee size: {self.nodes}\n'
             f' Workers per node: {self.workers}\n'
@@ -47,7 +49,8 @@ class Setup:
         ).group(1)
         rate = int(search(r'Input rate: (\d+)', raw).group(1))
         tx_size = int(search(r'Transaction size: (\d+)', raw).group(1))
-        return cls(faults, nodes, workers, collocate, rate, tx_size)
+        param_type = search(r'Parameter type: (.*)', raw).group(1)
+        return cls(faults, nodes, workers, collocate, rate, tx_size, param_type)
 
 
 class Result:
@@ -134,6 +137,7 @@ class LogAggregator:
                     setup.collocate,
                     setup.rate,
                     setup.tx_size,
+                    setup.param_type,
                     max_latency=None if max_lat == 'any' else max_lat,
                 )
                 with open(filename, 'w') as f:

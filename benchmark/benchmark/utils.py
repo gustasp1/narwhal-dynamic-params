@@ -31,6 +31,10 @@ class PathMaker:
     def key_file(i):
         assert isinstance(i, int) and i >= 0
         return f'.node-{i}.json'
+    
+    @staticmethod
+    def system_level_config():
+        return 'system_level_config.txt'
 
     @staticmethod
     def db_path(i, j=None):
@@ -65,10 +69,10 @@ class PathMaker:
         return 'results'
 
     @staticmethod
-    def result_file(faults, nodes, workers, collocate, rate, tx_size):
+    def result_file(faults, nodes, workers, collocate, rate, tx_size, param_type):
         return join(
             PathMaker.results_path(),
-            f'bench-{faults}-{nodes}-{workers}-{collocate}-{rate}-{tx_size}.txt'
+            f'bench-{faults}-{nodes}-{workers}-{collocate}-{rate}-{tx_size}-{param_type}.txt'
         )
 
     @staticmethod
@@ -76,11 +80,11 @@ class PathMaker:
         return 'plots'
 
     @staticmethod
-    def agg_file(type, faults, nodes, workers, collocate, rate, tx_size, max_latency=None):
+    def agg_file(type, faults, nodes, workers, collocate, rate, tx_size, param_type, max_latency=None):
         if max_latency is None:
-            name = f'{type}-bench-{faults}-{nodes}-{workers}-{collocate}-{rate}-{tx_size}.txt'
+            name = f'{type}-bench-{faults}-{nodes}-{workers}-{collocate}-{rate}-{tx_size}-{param_type}.txt'
         else:
-            name = f'{type}-{max_latency}-bench-{faults}-{nodes}-{workers}-{collocate}-{rate}-{tx_size}.txt'
+            name = f'{type}-{max_latency}-bench-{faults}-{nodes}-{workers}-{collocate}-{rate}-{tx_size}-{param_type}.txt'
         return join(PathMaker.plots_path(), name)
 
     @staticmethod

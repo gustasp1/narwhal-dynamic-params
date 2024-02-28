@@ -19,40 +19,57 @@ pub type CryptoError = ed25519::Error;
 
 /// Represents a hash digest (32 bytes).
 #[derive(Hash, PartialEq, Default, Eq, Clone, Deserialize, Serialize, Ord, PartialOrd)]
-pub struct Digest(pub [u8; 32]);
+pub struct Digest {
+    pub hash: [u8; 32],
+    pub transaction_count: usize,
+}
 
 impl Digest {
+    pub fn new_with_hash(hash: [u8; 32]) -> Self {
+        Self {
+            hash,
+            transaction_count: 0,
+        }
+    }
+
+    pub fn new_all_params(hash: [u8; 32], transaction_count: usize) -> Self {
+        Self {
+            hash,
+            transaction_count,
+        }
+    }
+
     pub fn to_vec(&self) -> Vec<u8> {
-        self.0.to_vec()
+        self.hash.to_vec()
     }
 
     pub fn size(&self) -> usize {
-        self.0.len()
+        self.hash.len()
     }
 }
 
 impl fmt::Debug for Digest {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "{}", base64::encode(&self.0))
+        write!(f, "{}", base64::encode(&self.hash))
     }
 }
 
 impl fmt::Display for Digest {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "{}", base64::encode(&self.0).get(0..16).unwrap())
+        write!(f, "{}", base64::encode(&self.hash).get(0..16).unwrap())
     }
 }
 
 impl AsRef<[u8]> for Digest {
     fn as_ref(&self) -> &[u8] {
-        &self.0
+        &self.hash
     }
 }
 
 impl TryFrom<&[u8]> for Digest {
     type Error = TryFromSliceError;
     fn try_from(item: &[u8]) -> Result<Self, Self::Error> {
-        Ok(Digest(item.try_into()?))
+        Ok(Digest::new_with_hash(item.try_into()?))
     }
 }
 
@@ -184,7 +201,7 @@ pub struct Signature {
 impl Signature {
     pub fn new(digest: &Digest, secret: &SecretKey) -> Self {
         let keypair = dalek::Keypair::from_bytes(&secret.0).expect("Unable to load secret key");
-        let sig = keypair.sign(&digest.0).to_bytes();
+        let sig = keypair.sign(&digest.hash).to_bytes();
         let part1 = sig[..32].try_into().expect("Unexpected signature length");
         let part2 = sig[32..64].try_into().expect("Unexpected signature length");
         Signature { part1, part2 }
@@ -200,7 +217,7 @@ impl Signature {
     pub fn verify(&self, digest: &Digest, public_key: &PublicKey) -> Result<(), CryptoError> {
         let signature = ed25519::signature::Signature::from_bytes(&self.flatten())?;
         let key = dalek::PublicKey::from_bytes(&public_key.0)?;
-        key.verify_strict(&digest.0, &signature)
+        key.verify_strict(&digest.hash, &signature)
     }
 
     pub fn verify_batch<'a, I>(digest: &Digest, votes: I) -> Result<(), CryptoError>
@@ -211,7 +228,7 @@ impl Signature {
         let mut signatures: Vec<dalek::Signature> = Vec::new();
         let mut keys: Vec<dalek::PublicKey> = Vec::new();
         for (key, sig) in votes.into_iter() {
-            messages.push(&digest.0[..]);
+            messages.push(&digest.hash[..]);
             signatures.push(ed25519::signature::Signature::from_bytes(&sig.flatten())?);
             keys.push(dalek::PublicKey::from_bytes(&key.0)?);
         }

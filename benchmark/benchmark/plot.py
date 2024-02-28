@@ -96,7 +96,7 @@ class Ploter:
 
         plt.legend(loc='lower center', bbox_to_anchor=(0.5, 1), ncol=3)
         plt.xlim(xmin=0)
-        plt.ylim(bottom=0)
+        plt.ylim(0, 4_500)
         plt.xlabel(x_label, fontweight='bold')
         plt.ylabel(y_label[0], fontweight='bold')
         plt.xticks(weight='bold')
@@ -121,8 +121,12 @@ class Ploter:
     def nodes(data):
         x = search(r'Committee size: (\d+)', data).group(1)
         f = search(r'Faults: (\d+)', data).group(1)
-        faults = f'({f} faulty)' if f != '0' else ''
-        return f'{x} nodes {faults}'
+        param_type = search(r'Parameter type: (.*)', data)
+        if param_type:
+            param_type = param_type.group(1)
+        faults = f' ({f} faulty)' if f != '0' else ''
+        params = f', {param_type} params' if param_type else ''
+        return f'{x} nodes{faults}{params}'
 
     @staticmethod
     def workers(data):
@@ -173,31 +177,35 @@ class Ploter:
         latency_files, tps_files = [], []
         for f in params.faults:
             for x in iterator:
-                latency_files += glob(
-                    PathMaker.agg_file(
-                        'latency',
-                        f,
-                        x if not params.scalability() else params.nodes[0],
-                        x if params.scalability() else params.workers[0],
-                        params.collocate,
-                        'any',
-                        params.tx_size,
+                for param_type in ['static', 'dynamic']:
+                    latency_files += glob(
+                        PathMaker.agg_file(
+                            'latency',
+                            f,
+                            x if not params.scalability() else params.nodes[0],
+                            x if params.scalability() else params.workers[0],
+                            params.collocate,
+                            'any',
+                            params.tx_size,
+                            param_type
+                        )
                     )
-                )
 
             for l in params.max_latency:
-                tps_files += glob(
-                    PathMaker.agg_file(
-                        'tps',
-                        f,
-                        'x' if not params.scalability() else params.nodes[0],
-                        'x' if params.scalability() else params.workers[0],
-                        params.collocate,
-                        'any',
-                        params.tx_size,
-                        max_latency=l
+                for param_type in ['static', 'dynamic']:
+                    tps_files += glob(
+                        PathMaker.agg_file(
+                            'tps',
+                            f,
+                            'x' if not params.scalability() else params.nodes[0],
+                            'x' if params.scalability() else params.workers[0],
+                            params.collocate,
+                            'any',
+                            params.tx_size,
+                            param_type,
+                            max_latency=l
+                        )
                     )
-                )
 
         cls.plot_latency(latency_files, params.scalability())
         cls.plot_tps(tps_files, params.scalability())
