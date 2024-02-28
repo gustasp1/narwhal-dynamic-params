@@ -25,8 +25,7 @@ use tokio::time::{sleep, Duration, Instant};
 pub mod batch_maker_tests;
 
 const ONE_SECOND_IN_MILLIS: u128 = 1_000;
-// Minimum time the system has to be running to start changing parameters, measured in millis.
-const MININUM_RUNNING_TIME: u128 = 500;
+const MININUM_RUNNING_TIME: u128 = 1_000;
 
 pub type Transaction = Vec<u8>;
 pub type Batch = Vec<Transaction>;
@@ -86,7 +85,7 @@ impl ParameterOptimizer {
             input_rate: InputRate::new(),
             first_tx_time: Instant::now(),
             first_tx_recvd: false,
-            current_level: 1,
+            current_level: 2,
             batch_sizes: vec![1, 1_000, 500_000],
             // tx_change_level,
             config_map: HashMap::new(),
@@ -111,10 +110,10 @@ impl ParameterOptimizer {
     }
 
     fn get_current_rate(&self) -> u64 {
-        let elapsed = self.first_tx_time.elapsed().as_millis();
-        if elapsed < ONE_SECOND_IN_MILLIS {
-            return self.input_rate.transaction_rate / ((elapsed * ONE_SECOND_IN_MILLIS) as u64);
-        }
+        // let elapsed = self.first_tx_time.elapsed().as_millis();
+        // if elapsed < ONE_SECOND_IN_MILLIS {
+        //     return self.input_rate.transaction_rate / ((elapsed * ONE_SECOND_IN_MILLIS) as u64);
+        // }
         self.input_rate.transaction_rate
     }
 
@@ -148,7 +147,7 @@ impl ParameterOptimizer {
             Err(_) => {
                 // Default config
                 self.config_map.insert(5_000, 0);
-                self.config_map.insert(7_000, 1);
+                self.config_map.insert(6_000, 1);
                 self.config_map.insert(1_000_000, 2);
             }
         };
