@@ -10,7 +10,7 @@ use ed25519_dalek::{Digest as _, Sha512};
 #[cfg(feature = "benchmark")]
 use log::info;
 use network::ReliableSender;
-use primary::WorkerPrimaryMessage;
+// use primary::WorkerPrimaryMessage;
 use std::collections::{VecDeque, HashMap};
 #[cfg(feature = "benchmark")]
 use std::convert::TryInto as _;
@@ -19,15 +19,13 @@ use std::net::SocketAddr;
 use std::time::{UNIX_EPOCH, SystemTime};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::{sleep, Duration, Instant};
-use byteorder::{BigEndian, ByteOrder};
 
 #[cfg(test)]
 #[path = "tests/batch_maker_tests.rs"]
 pub mod batch_maker_tests;
 
-const ONE_SECOND_IN_MILLIS: u64 = 1_000;
-// Minimum time the system has to be running to start changing parameters, measured in millis.
-const MININUM_RUNNING_TIME: u64 = 100;
+const ONE_SECOND_IN_MILLIS: u128 = 1_000;
+const MININUM_RUNNING_TIME: u128 = 1_000;
 
 pub type Transaction = Vec<u8>;
 pub type Batch = Vec<Transaction>;
@@ -51,7 +49,7 @@ pub struct BatchMaker {
     /// A network sender to broadcast the batches to the other workers.
     network: ReliableSender,
     parameter_optimizer: ParameterOptimizer,
-    /// If the learning flag is set, do not change parameters based on input load because we 
+        /// If the learning flag is set, do not change parameters based on input load because we 
     /// are trying to test the latency for a particular input rate and system level
     learning: bool,
 }
@@ -64,16 +62,17 @@ pub struct InputRate {
 }
 
 pub struct ParameterOptimizer {
-    // Current input rate.
+    // Current input rate,
     input_rate: InputRate,
     // Time when the system started.
-    system_start_time: u64,
+    first_tx_time: Instant,
+    first_tx_recvd: bool,
     // Current system level. Lower levels optimize for latency, higher levels for throughput.
     current_level: usize,
     // Max level the system can have. Currently it is only 1, will be increased in the future.
     batch_sizes: Vec<usize>,
-    // Output channel to inform proposer about changing system level.
-    tx_change_level: Sender<Vec<u8>>,
+    // // Output channel to inform proposer about changing system level.
+    // tx_change_level: Sender<Vec<u8>>,
     // Maps input rate to system level
     config_map: HashMap<u64, usize>,
     // Known input rates sorted in descending order.
@@ -87,10 +86,11 @@ impl ParameterOptimizer {
         info!("Total worker count: {}", total_worker_count);
         Self {
             input_rate: InputRate::new(),
-            system_start_time: 0,
+            first_tx_time: Instant::now(),
+            first_tx_recvd: false,
             current_level: 2,
-            batch_sizes: vec![1, 2_000, 500_000],
-            tx_change_level,
+            batch_sizes: vec![1, 1_000, 500_000],
+            // tx_change_level,
             config_map: HashMap::new(),
             sorted_input_rates: Vec::new(),
             total_worker_count,
@@ -98,11 +98,7 @@ impl ParameterOptimizer {
     }
 
     pub async fn adjust_parameters(&mut self) {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Failed to measure time")
-            .as_millis() as u64;
-        if self.system_start_time + MININUM_RUNNING_TIME < now {
+        if self.first_tx_time.elapsed().as_millis() >= MININUM_RUNNING_TIME {
             let current_rate = self.get_current_rate();
             for &input_rate in self.sorted_input_rates.iter() {
                 if current_rate < input_rate / self.total_worker_count as u64 {
@@ -117,31 +113,25 @@ impl ParameterOptimizer {
     }
 
     fn get_current_rate(&self) -> u64 {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Failed to measure time")
-            .as_millis() as u64;
-        info!("getting current rate");
-
-        let diff = now - self.system_start_time;
-        if diff < ONE_SECOND_IN_MILLIS {
-            return self.input_rate.transaction_rate / diff * ONE_SECOND_IN_MILLIS;
-        }
+        // let elapsed = self.first_tx_time.elapsed().as_millis();
+        // if elapsed < ONE_SECOND_IN_MILLIS {
+        //     return self.input_rate.transaction_rate / ((elapsed * ONE_SECOND_IN_MILLIS) as u64);
+        // }
         self.input_rate.transaction_rate
     }
 
     async fn change_level(&mut self, new_level: usize) {
         self.current_level = new_level;
 
-        // Change the level of proposer
-        let message = WorkerPrimaryMessage::ChangeLevel(new_level);
-        let message = bincode::serialize(&message)
-            .expect("Failed to serialize change level message");
+        // // Change the level of proposer
+        // let message = WorkerPrimaryMessage::ChangeLevel(new_level);
+        // let message = bincode::serialize(&message)
+        //     .expect("Failed to serialize change level message");
 
-        self.tx_change_level
-            .send(message)
-            .await
-            .expect("Failed to send level change to proposer");
+        // self.tx_change_level
+        //     .send(message)
+        //     .await
+        //     .expect("Failed to send level change to proposer");
     }
 
     fn load_config(&mut self) {
@@ -159,9 +149,9 @@ impl ParameterOptimizer {
             },
             Err(_) => {
                 // Default config
-                self.config_map.insert(8_000, 0);
-                self.config_map.insert(20_000, 1);
-                self.config_map.insert(500_000, 2);
+                self.config_map.insert(5_000, 0);
+                self.config_map.insert(6_000, 1);
+                self.config_map.insert(1_000_000, 2);
             }
         };
 
@@ -185,10 +175,9 @@ impl InputRate {
             .as_millis() as u64;
         self.transaction_queue.push_back((now, size));
         self.transaction_rate += size;
-        info!("adding transactions");
 
         // remove old measurements
-        while self.transaction_queue.len() > 0 && self.transaction_queue.front().unwrap().0 + ONE_SECOND_IN_MILLIS < now {
+        while self.transaction_queue.len() > 0 && self.transaction_queue.front().unwrap().0 + (ONE_SECOND_IN_MILLIS as u64) < now {
             self.transaction_rate -= self.transaction_queue.pop_front().unwrap().1;
         }
     }
@@ -237,12 +226,10 @@ impl BatchMaker {
                 Some(transaction) = self.rx_transaction.recv() => {
                     self.current_batch_size += transaction.len();
                     self.current_batch.push(transaction);
-                    // if self.parameter_optimizer.system_start_time == 0 {
-                    //     self.parameter_optimizer.system_start_time = SystemTime::now()
-                    //     .duration_since(UNIX_EPOCH)
-                    //     .expect("Failed to measure time")
-                    //     .as_millis() as u64;
-                    // }
+                    if !self.parameter_optimizer.first_tx_recvd {
+                        self.parameter_optimizer.first_tx_recvd = true;
+                        self.parameter_optimizer.first_tx_time = Instant::now();
+                    }
                     if self.current_batch_size >= self.parameter_optimizer.batch_sizes[self.parameter_optimizer.current_level] {
                         self.seal().await;
                         timer.as_mut().reset(Instant::now() + Duration::from_millis(self.max_batch_delay));
@@ -269,12 +256,12 @@ impl BatchMaker {
         let size = self.current_batch_size;
 
         let transaction_count = self.current_batch.len();
-        // if !self.learning {
-        //     self.parameter_optimizer
-        //         .input_rate
-        //         .add_transactions(transaction_count as u64);
-        //     self.parameter_optimizer.adjust_parameters().await;
-        // }
+        if !self.learning {
+            self.parameter_optimizer
+                .input_rate
+                .add_transactions(transaction_count as u64);
+            self.parameter_optimizer.adjust_parameters().await;
+        }
 
         // Look for sample txs (they all start with 0) and gather their txs id (the next 8 bytes).
         #[cfg(feature = "benchmark")]
@@ -289,16 +276,7 @@ impl BatchMaker {
         self.current_batch_size = 0;
         let batch: Vec<_> = self.current_batch.drain(..).collect();
 
-        let mut mean_start_time = 0;
-
-        // if let (Some(first_transaction), Some(last_transaction)) = (batch.first(), batch.last()) {
-        //     let first_transaction_timestamp = BigEndian::read_u64(&first_transaction[9..17]);
-        //     let last_transaction_timestamp = BigEndian::read_u64(&last_transaction[9..17]);
-        //     mean_start_time = (first_transaction_timestamp + last_transaction_timestamp) / 2;
-        // }
-
-
-        let message = WorkerMessage::Batch(batch, transaction_count, mean_start_time);
+        let message = WorkerMessage::Batch(batch, transaction_count);
         let serialized = bincode::serialize(&message).expect("Failed to serialize our own batch");
 
         #[cfg(feature = "benchmark")]
@@ -334,8 +312,6 @@ impl BatchMaker {
                 batch: serialized,
                 handlers: names.into_iter().zip(handlers.into_iter()).collect(),
                 transaction_count,
-                mean_start_time,
-                level: self.parameter_optimizer.current_level,
             })
             .await
             .expect("Failed to deliver batch");

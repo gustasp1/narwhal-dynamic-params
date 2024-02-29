@@ -21,8 +21,6 @@ pub struct ProcessorMessage {
     pub batch: SerializedBatchMessage,
     /// The number of transactions in the batch.
     pub transaction_count: usize,
-    /// Mean start time of first and last batch transactions.
-    pub mean_start_time: u64,
 }
 
 /// Hashes and stores batches, it then outputs the batch's digest.
@@ -42,9 +40,9 @@ impl Processor {
         own_digest: bool,
     ) {
         tokio::spawn(async move {
-            while let Some(ProcessorMessage { batch, transaction_count, mean_start_time}) = rx_batch.recv().await {
+            while let Some(ProcessorMessage { batch, transaction_count}) = rx_batch.recv().await {
                 // Hash the batch.
-                let digest = Digest::new_all_params(Sha512::digest(&batch).as_slice()[..32].try_into().unwrap(), transaction_count, mean_start_time);
+                let digest = Digest::new_all_params(Sha512::digest(&batch).as_slice()[..32].try_into().unwrap(), transaction_count);
 
                 // Store the batch.
                 store.write(digest.to_vec(), batch).await;

@@ -37,7 +37,7 @@ pub type SerializedBatchDigestMessage = Vec<u8>;
 /// The message exchanged between workers.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum WorkerMessage {
-    Batch(Batch, usize, u64),
+    Batch(Batch, usize),
     BatchRequest(Vec<Digest>, /* origin */ PublicKey),
 }
 
@@ -320,9 +320,9 @@ impl MessageHandler for WorkerReceiverHandler {
 
         // Deserialize and parse the message.
         match bincode::deserialize(&serialized) {
-            Ok(WorkerMessage::Batch(_, transaction_count, mean_start_time)) => self
+            Ok(WorkerMessage::Batch(_, transaction_count)) => self
                 .tx_processor
-                .send(ProcessorMessage { batch: serialized.to_vec(), transaction_count, mean_start_time})
+                .send(ProcessorMessage { batch: serialized.to_vec(), transaction_count})
                 .await
                 .expect("Failed to send batch"),
             Ok(WorkerMessage::BatchRequest(missing, requestor)) => self
