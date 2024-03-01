@@ -7,6 +7,7 @@ use log::{info, warn};
 use rand::prelude::SliceRandom as _;
 use rand::rngs::SmallRng;
 use rand::SeedableRng as _;
+use rand::Rng;
 use std::cmp::min;
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
@@ -58,6 +59,7 @@ impl ReliableSender {
 
     /// Reliably send a message to a specific address.
     pub async fn send(&mut self, address: SocketAddr, data: Bytes) -> CancelHandler {
+        sleep(Duration::from_millis(100)).await;
         let (sender, receiver) = oneshot::channel();
         self.connections
             .entry(address)

@@ -12,6 +12,7 @@ use std::net::SocketAddr;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
+use tokio::time::{sleep, Duration};
 
 #[cfg(test)]
 #[path = "tests/simple_sender_tests.rs"]
@@ -50,6 +51,7 @@ impl SimpleSender {
     /// Try (best-effort) to send a message to a specific address.
     /// This is useful to answer sync requests.
     pub async fn send(&mut self, address: SocketAddr, data: Bytes) {
+        sleep(Duration::from_millis(100)).await;
         // Try to re-use an existing connection if possible.
         if let Some(tx) = self.connections.get(&address) {
             if tx.send(data.clone()).await.is_ok() {
