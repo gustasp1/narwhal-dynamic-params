@@ -85,7 +85,7 @@ impl Client {
     pub async fn send(&self) -> Result<()> {
         const PRECISION: u64 = 20; // Sample precision.
         const BURST_DURATION: u64 = 1000 / PRECISION;
-        const FLUCTUATION_DURATION: Duration = Duration::from_millis(25_000);
+        const FLUCTUATION_DURATION: Duration = Duration::from_millis(35_000);
 
         // The transaction size must be at least 16 bytes to ensure all txs are different.
         if self.size < 9 {
