@@ -10,6 +10,8 @@ from benchmark.utils import PathMaker
 from benchmark.config import PlotParameters
 from benchmark.aggregate import LogAggregator
 
+from pathlib import Path
+import shutil
 
 @tick.FuncFormatter
 def default_major_formatter(x, pos):
@@ -96,7 +98,7 @@ class Ploter:
 
         plt.legend(loc='lower center', bbox_to_anchor=(0.5, 1), ncol=3)
         plt.xlim(xmin=0)
-        plt.ylim(0, 4_500)
+        plt.ylim(0, 5_500)
         plt.xlabel(x_label, fontweight='bold')
         plt.ylabel(y_label[0], fontweight='bold')
         plt.xticks(weight='bold')
@@ -209,3 +211,31 @@ class Ploter:
 
         cls.plot_latency(latency_files, params.scalability())
         cls.plot_tps(tps_files, params.scalability())
+
+    
+    @classmethod
+    def plot_fluctuations(cls):
+        try:
+            if Path("fluctuation_plots").exists():
+                shutil.rmtree('fluctuation_plots')
+            Path("fluctuation_plots").mkdir()
+            x_label = 'Time (s)'
+            y_labels = ['Input rate', 'Throughput (tx/s)', 'Latency (s)']
+            with open('input_rates.txt', 'r') as f:
+                lines = f.readlines()
+                index = 0
+                for i, filename in enumerate(['input_rate_vs_time', 'tps_vs_time', 'latency_vs_time']):
+                    values = [float(value) for value in lines[index][1:len(lines[index])-2].split(', ')]
+                    index += 1
+                    times = [float(t) for t in lines[index][1:len(lines[index])-2].split(', ')]
+                    index += 1
+                    print(filename)
+                
+                    plt.plot(times, values)
+                    plt.xlabel(xlabel=x_label, fontweight='bold')
+                    plt.ylabel(ylabel=y_labels[i], fontweight='bold')
+                    plt.savefig(f"fluctuation_plots/{filename}.pdf")
+                    plt.clf()
+
+        except FileNotFoundError as e:
+            raise PlotError('Input rates file could not be found', e)

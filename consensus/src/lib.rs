@@ -5,8 +5,10 @@ use crypto::{Digest, PublicKey};
 use log::{debug, info, log_enabled, warn};
 use primary::{Certificate, Round};
 use std::cmp::max;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use tokio::sync::mpsc::{Receiver, Sender};
+use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::time::Instant;
 
 #[cfg(test)]
 #[path = "tests/consensus_tests.rs"]
@@ -62,6 +64,33 @@ impl State {
     }
 }
 
+struct PerformanceMetrics {
+    tps_queue: VecDeque<(u64, usize)>, 
+    current_tps: usize,
+}
+
+impl PerformanceMetrics {
+    fn new() -> Self {
+        Self {
+            tps_queue: VecDeque::new(),
+            current_tps: 0,
+        }
+    }
+
+    fn add_measurement(&mut self, digest: &Digest) {
+        let now: u64 = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Failed to measure time")
+            .as_millis() as u64;
+        self.tps_queue.push_back((now, digest.transaction_count));
+        self.current_tps += digest.transaction_count;
+
+        while self.tps_queue.len() > 0 && self.tps_queue.front().unwrap().0 + 1_000 < now {
+            self.current_tps -= self.tps_queue.pop_front().unwrap().1;
+        }
+    }
+}
+
 pub struct Consensus {
     /// The committee information.
     committee: Committee,
@@ -105,9 +134,16 @@ impl Consensus {
     async fn run(&mut self) {
         // The consensus state (everything else is immutable).
         let mut state = State::new(self.genesis.clone());
+        let mut performance_metrics = PerformanceMetrics::new();
+        let mut first_digest_time = Instant::now();
+        let mut certificate_received = false;
 
         // Listen to incoming certificates.
         while let Some(certificate) = self.rx_primary.recv().await {
+            if !certificate_received {
+                first_digest_time = Instant::now();
+                certificate_received = true;
+            }
             debug!("Processing {:?}", certificate);
             let round = certificate.round();
 
@@ -184,6 +220,15 @@ impl Consensus {
                 for digest in certificate.header.payload.keys() {
                     // NOTE: This log entry is used to compute performance.
                     info!("Committed {} -> {:?}", certificate.header, digest);
+                    performance_metrics.add_measurement(digest);
+
+                    let elapsed_time = first_digest_time.elapsed().as_millis() as usize;
+                    if elapsed_time < 1_000 {
+                        info!("Current TPS: {}", performance_metrics.current_tps * 1_000 / elapsed_time);
+                    }
+                    else{
+                        info!("Current TPS: {}", performance_metrics.current_tps);
+                    }
                 }
 
                 self.tx_primary

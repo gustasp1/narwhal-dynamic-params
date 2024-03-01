@@ -7,6 +7,7 @@ from re import findall, search
 from statistics import mean
 
 from benchmark.utils import Print
+import math
 
 
 class ParseError(Exception):
@@ -14,13 +15,12 @@ class ParseError(Exception):
 
 
 class LogParser:
-    def __init__(self, clients, primaries, workers, faults=0, param_type='static'):
+    def __init__(self, clients, primaries, workers, faults=0):
+        self.worker_count = len(workers)
         inputs = [clients, primaries, workers]
         assert all(isinstance(x, list) for x in inputs)
         assert all(isinstance(x, str) for y in inputs for x in y)
         assert all(x for x in inputs)
-
-        self.param_type = param_type
 
         self.faults = faults
         if isinstance(faults, int):
@@ -36,19 +36,21 @@ class LogParser:
                 results = p.map(self._parse_clients, clients)
         except (ValueError, IndexError, AttributeError) as e:
             raise ParseError(f'Failed to parse clients\' logs: {e}')
-        self.size, self.rate, self.start, misses, self.sent_samples \
-            = zip(*results)
+        self.size, self.rate, self.start, misses, self.sent_samples, \
+                rates_times = zip(*results)
         self.misses = sum(misses)
-
+        self._process_values_times(rates_times, 'w', rates = True)
+        
         # Parse the primaries logs.
         try:
             with Pool() as p:
                 results = p.map(self._parse_primaries, primaries)
         except (ValueError, IndexError, AttributeError) as e:
             raise ParseError(f'Failed to parse nodes\' logs: {e}')
-        proposals, commits, self.configs, primary_ips = zip(*results)
+        proposals, commits, self.configs, primary_ips, tps_times = zip(*results)
         self.proposals = self._merge_results([x.items() for x in proposals])
         self.commits = self._merge_results([x.items() for x in commits])
+        self._process_values_times(tps_times)
 
         # Parse the workers logs.
         try:
@@ -69,6 +71,45 @@ class LogParser:
             Print.warn(
                 f'Clients missed their target rate {self.misses:,} time(s)'
             )
+    
+    def _process_values_times(self, values_times, file_mode = 'a', rates = False):
+        values_times = list(sum(values_times, []))
+        values_times = sorted(values_times, key = lambda x : x[1])
+        values, times = [list(x) for x in zip(*values_times)]
+        
+        # Times should start from 0
+        times = [t - times[0] for t in times]
+        values, times = self._group_into_buckets(values, times)
+
+        if rates:
+            values = [rate * self.worker_count for rate in values]
+
+        with open('input_rates.txt', file_mode) as f:
+            f.write(f"{values}\n")
+            f.write(f"{times}\n")
+
+    # Groups logs into buckets according to their timestamps.
+    def _group_into_buckets(self, values, times, bucket_duration = 5_000):
+        i = 0
+        next_values, next_times = [], []
+        step = 0
+        multiplier = 1_000 / bucket_duration
+        while i < len(times):
+            s = 0
+            cnt = 0
+            while i < len(times) and math.floor(times[i]*multiplier) == step:
+                s += values[i]
+                cnt += 1
+                i += 1
+            if cnt > 0:
+                next_values.append(s / cnt)
+                next_times.append(step / multiplier)
+            step += 1
+        return next_values, next_times
+
+    def _write_to_file(self, values, file_mode='a'):
+        with open('input_rates.txt', file_mode) as f:
+            f.write(f"{values}\n")
 
     def _merge_results(self, input):
         # Keep the earliest timestamp.
@@ -94,7 +135,10 @@ class LogParser:
         tmp = findall(r'\[(.*Z) .* sample transaction (\d+)', log)
         samples = {int(s): self._to_posix(t) for t, s in tmp}
 
-        return size, rate, start, misses, samples
+        rates_times = findall(r'\[(.*Z) .* Current rate: (\d+)', log)
+        rates_times = [(int(rate), self._to_posix(t)) for t, rate in rates_times]
+
+        return size, rate, start, misses, samples, rates_times
 
     def _parse_primaries(self, log):
         if search(r'(?:panicked|Error)', log) is not None:
@@ -134,7 +178,10 @@ class LogParser:
 
         ip = search(r'booted on (\d+.\d+.\d+.\d+)', log).group(1)
         
-        return proposals, commits, configs, ip
+        tps_times = findall(r'\[(.*Z) .* Current TPS: (\d+)', log)
+        tps_times = [(int(tps), self._to_posix(t)) for t, tps in tps_times]
+        
+        return proposals, commits, configs, ip, tps_times
 
     def _parse_workers(self, log):
         if search(r'(?:panic|Error)', log) is not None:
@@ -179,15 +226,27 @@ class LogParser:
         return tps, bps, duration
 
     def _end_to_end_latency(self):
-        latency = []
+        latency_sum = []
+        latency_times = []
+        latencies = []
         for sent, received in zip(self.sent_samples, self.received_samples):
             for tx_id, batch_id in received.items():
                 if batch_id in self.commits:
                     assert tx_id in sent  # We receive txs that we sent.
                     start = sent[tx_id]
                     end = self.commits[batch_id]
-                    latency += [end-start]
-        return mean(latency) if latency else 0
+                    latency_times.append(end)
+                    latencies.append(end-start)
+                    latency_sum += [end-start]
+        latencies, latency_times = [list(x) for x in zip(*sorted(zip(latencies, latency_times), key=lambda x : x[1]))]
+        latency_times = [t - latency_times[0] for t in latency_times]
+
+        latencies, times = self._group_into_buckets(latencies, latency_times)
+        
+        self._write_to_file(latencies)
+        self._write_to_file(times)
+
+        return mean(latency_sum) if latency_sum else 0
 
     def result(self):
         header_size = self.configs[0]['header_size']
@@ -203,13 +262,14 @@ class LogParser:
         end_to_end_tps, end_to_end_bps, duration = self._end_to_end_throughput()
         end_to_end_latency = self._end_to_end_latency() * 1_000
 
+
+
         return (
             '\n'
             '-----------------------------------------\n'
             ' SUMMARY:\n'
             '-----------------------------------------\n'
             ' + CONFIG:\n'
-            f' Parameter type: {self.param_type}\n'
             f' Faults: {self.faults} node(s)\n'
             f' Committee size: {self.committee_size} node(s)\n'
             f' Worker(s) per node: {self.workers} worker(s)\n'
@@ -243,9 +303,8 @@ class LogParser:
             f.write(self.result())
 
     @classmethod
-    def process(cls, directory, faults=0, param_type='static'):
+    def process(cls, directory, faults=0):
         assert isinstance(directory, str)
-
         clients = []
         for filename in sorted(glob(join(directory, 'client-*.log'))):
             with open(filename, 'r') as f:
@@ -259,4 +318,4 @@ class LogParser:
             with open(filename, 'r') as f:
                 workers += [f.read()]
 
-        return cls(clients, primaries, workers, faults=faults, param_type=param_type)
+        return cls(clients, primaries, workers, faults=faults)

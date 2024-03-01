@@ -85,6 +85,7 @@ impl Client {
     pub async fn send(&self) -> Result<()> {
         const PRECISION: u64 = 20; // Sample precision.
         const BURST_DURATION: u64 = 1000 / PRECISION;
+        const FLUCTUATION_DURATION: Duration = Duration::from_millis(25_000);
 
         // The transaction size must be at least 16 bytes to ensure all txs are different.
         if self.size < 9 {
@@ -98,8 +99,11 @@ impl Client {
             .await
             .context(format!("failed to connect to {}", self.target))?;
 
-        // Submit all transactions.
-        let burst = self.rate / PRECISION;
+        let input_rates = [self.rate, 250];
+        let mut current_rate = self.rate;
+        let mut current_rate_index = 0;
+
+        let mut burst = current_rate / PRECISION;
         let mut tx = BytesMut::with_capacity(self.size);
         let mut counter = 0;
         let mut r = rand::thread_rng().gen();
@@ -109,6 +113,7 @@ impl Client {
 
         // NOTE: This log entry is used to compute performance.
         info!("Start sending transactions");
+        let mut current_rate_start = Instant::now();
 
         'main: loop {
             interval.as_mut().tick().await;
@@ -134,11 +139,24 @@ impl Client {
                     break 'main;
                 }
             }
+
             if now.elapsed().as_millis() > BURST_DURATION as u128 {
                 // NOTE: This log entry is used to compute performance.
                 warn!("Transaction rate too high for this client");
             }
             counter += 1;
+
+            if current_rate_start.elapsed() > FLUCTUATION_DURATION {
+                current_rate_index = (current_rate_index + 1) % input_rates.len();
+                current_rate = input_rates[current_rate_index];
+
+                burst = current_rate / PRECISION;
+                current_rate_start = current_rate_start
+                        .checked_add(FLUCTUATION_DURATION)
+                        .expect("Failed to add time");
+            }
+
+            info!("Current rate: {}", burst * PRECISION);
         }
         Ok(())
     }
