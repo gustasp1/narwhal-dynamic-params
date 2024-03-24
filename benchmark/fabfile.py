@@ -40,21 +40,23 @@ def learnlocal(ctx, debug=True):
     ''' Run benchmarks on localhost '''
     bench_params = {
         'faults': 0,
-        'nodes': 4,
+        'nodes': 2,
         'workers': 1,
         'tx_size': 512,
         'duration': 2,
-        'rate': [1_000, 5_000],
-        'levels': [0, 1, 2],
+        'rate': [1_00, 5_00],
     }
     node_params = {
-        'header_size': 1_000,  # bytes
+        'header_size': [1_002],  # bytes
         'max_header_delay': 200,  # ms
         'gc_depth': 50,  # rounds
         'sync_retry_delay': 10_000,  # ms
         'sync_retry_nodes': 3,  # number of nodes
-        'batch_size': 500_000,  # bytes
-        'max_batch_delay': 200  # ms
+        'batch_size': [13, 5_000],  # bytes
+        'max_batch_delay': 200,  # ms
+        'quorum_threshold': ['1f'],
+        'duration': 2,
+        'learning': True,
     }
     try:
         ret = LocalBench(bench_params, node_params).learn()
@@ -80,7 +82,7 @@ def destroy(ctx):
 
 
 @task
-def start(ctx, max=2):
+def start(ctx, max=1):
     ''' Start at most `max` machines per data center '''
     try:
         InstanceManager.make().start_instances(max)
@@ -147,21 +149,23 @@ def learnremote(ctx, debug=True):
     ''' Run benchmarks on localhost '''
     bench_params = {
         'faults': 0,
-        'nodes': 4,
+        'nodes': 5,
         'workers': 1,
-        'rate': [50_000, 75_000, 110_000, 160_000],
+        'rate': [1_000],
         'duration': 10,
-        'levels': [0, 1, 2],
         'tx_size': 512,
     }
     node_params = {
-        'header_size': 1_000,  # bytes
+        'header_size': [1_002],  # bytes
         'max_header_delay': 200,  # ms
         'gc_depth': 50,  # rounds
         'sync_retry_delay': 10_000,  # ms
         'sync_retry_nodes': 3,  # number of nodes
-        'batch_size': 500_000,  # bytes
-        'max_batch_delay': 200  # ms
+        'batch_size': [13],  # bytes
+        'max_batch_delay': 200,  # ms
+        'quorum_threshold': ['f'],
+        'duration': 2,
+        'learning': True,
     }
     try:
         Bench(ctx).learn(bench_params, node_params, 1, debug)

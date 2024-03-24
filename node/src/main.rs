@@ -37,8 +37,6 @@ async fn main() -> Result<()> {
                     SubCommand::with_name("worker")
                         .about("Run a single worker")
                         .args_from_usage("--id=<INT> 'The worker id'")
-                        .args_from_usage("--level=<INT> 'The system level (0-2)'")
-                        .args_from_usage("--learning=<BOOL> 'learning flag'"),
                 )
                 .setting(AppSettings::SubcommandRequiredElseHelp),
         )
@@ -129,18 +127,7 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                 .unwrap()
                 .parse::<WorkerId>()
                 .context("The worker id must be a positive integer")?;
-            let level = match sub_matches
-                .value_of("level") {
-                    Some(level) => level.parse::<usize>().unwrap_or(0),
-                    None => 0,
-                };
-            let learning = match sub_matches
-                .value_of("learning")
-                .unwrap_or("0") {
-                    "1" => true,
-                    _ => false,
-                };
-            Worker::spawn(keypair.name, id, committee, parameters, store, total_worker_count, level, learning);
+            Worker::spawn(keypair.name, id, committee, parameters, store, total_worker_count);
         }
         _ => unreachable!(),
     }

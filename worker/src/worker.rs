@@ -54,10 +54,6 @@ pub struct Worker {
     store: Store,
     /// The total number of workers. total = count primaries * count workers per primary.
     total_worker_count: usize,
-    /// The system level.
-    level: usize,
-    /// Learning flag. If it is set to true, batch maker will not try to adjust parameters based on input rate.
-    learning: bool,
 }   
 
 impl Worker {
@@ -68,8 +64,6 @@ impl Worker {
         parameters: Parameters,
         store: Store,
         total_worker_count: usize,
-        level: usize,
-        learning: bool,
     ) {
         // Define a worker instance.
         let worker = Self {
@@ -79,8 +73,6 @@ impl Worker {
             parameters,
             store,
             total_worker_count,
-            level,
-            learning,
         };
 
         // Spawn all worker tasks.
@@ -184,8 +176,7 @@ impl Worker {
                 .map(|(name, addresses)| (*name, addresses.worker_to_worker))
                 .collect(),
             self.total_worker_count,
-            self.level,
-            self.learning,
+            self.parameters.learning,
         );
 
         // The `QuorumWaiter` waits for 2f authorities to acknowledge reception of the batch. It then forwards
@@ -195,6 +186,7 @@ impl Worker {
             /* stake */ self.committee.stake(&self.name),
             /* rx_message */ rx_quorum_waiter,
             /* tx_batch */ tx_processor,
+            self.parameters.quorum_threshold.clone(),
         );
 
         // The `Processor` hashes and stores the batch. It then forwards the batch's digest to the `PrimaryConnector`

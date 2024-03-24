@@ -78,7 +78,7 @@ class Bench:
         hosts = self.manager.hosts(flat=True)
         try:
             g = Group(*hosts, user="ubuntu", connect_kwargs=self.connect)
-            g.run(" && ".join(cmd), hide=True)
+            g.run(" && ".join(cmd), hide=False)
             Print.heading(f"Initialized testbed of {len(hosts)} nodes")
         except (GroupException, ExecutionError) as e:
             e = FabricError(e) if isinstance(e, GroupException) else e
@@ -92,7 +92,7 @@ class Bench:
         cmd = [delete_logs, f"({CommandMaker.kill()} || true)"]
         try:
             g = Group(*hosts, user="ubuntu", connect_kwargs=self.connect)
-            g.run(" && ".join(cmd), hide=True)
+            g.run(" && ".join(cmd), hide=False)
         except GroupException as e:
             raise BenchError("Failed to kill nodes", FabricError(e))
 
@@ -135,7 +135,7 @@ class Bench:
         name = splitext(basename(log_file))[0]
         cmd = f'tmux new -d -s "{name}" "{command} |& tee {log_file}"'
         c = Connection(host, user="ubuntu", connect_kwargs=self.connect)
-        output = c.run(cmd, hide=True)
+        output = c.run(cmd, hide=False)
         self._check_stderr(output)
 
     def _update(self, hosts, collocate):
@@ -154,7 +154,7 @@ class Bench:
             CommandMaker.alias_binaries(f"./{self.settings.repo_name}/target/release/"),
         ]
         g = Group(*ips, user="ubuntu", connect_kwargs=self.connect)
-        g.run(" && ".join(cmd), hide=True)
+        g.run(" && ".join(cmd), hide=False)
 
     def _config(self, hosts, node_parameters, bench_parameters):
         Print.info("Generating configuration files...")
@@ -199,7 +199,7 @@ class Bench:
         for i, name in enumerate(progress):
             for ip in committee.ips(name):
                 c = Connection(ip, user="ubuntu", connect_kwargs=self.connect)
-                c.run(f"{CommandMaker.cleanup()} || true", hide=True)
+                c.run(f"{CommandMaker.cleanup()} || true", hide=False)
                 c.put(PathMaker.committee_file(), ".")
                 c.put(PathMaker.key_file(i), ".")
                 c.put(PathMaker.parameters_file(), ".")
@@ -207,7 +207,7 @@ class Bench:
 
         return committee
 
-    def _run_single(self, rate, committee, bench_parameters, level=1, learning=0, debug=False):
+    def _run_single(self, rate, committee, bench_parameters, debug=False):
         faults = bench_parameters.faults
 
         # Kill any potentially unfinished run and delete logs.
@@ -257,8 +257,6 @@ class Bench:
                     PathMaker.db_path(i, id),
                     PathMaker.parameters_file(),
                     id,  # The worker's id.
-                    level,
-                    learning,
                     debug=debug,
                 )
                 log_file = PathMaker.worker_log_file(i, id)
@@ -304,8 +302,6 @@ class Bench:
     
     def learn(self, bench_parameters_dict, node_parameters_dict, learning=0, debug=True):
         Print.heading("Starting remote learning")
-        default_level = 1
-        level_config = {}
 
         try:
             bench_parameters = BenchParameters(bench_parameters_dict)
@@ -333,37 +329,37 @@ class Bench:
             e = FabricError(e) if isinstance(e, GroupException) else e
             raise BenchError("Failed to configure nodes", e)
 
-        total_runs = len(bench_parameters.rate) * len(bench_parameters.levels)
+        best_latency = {}
+        rates = self.bench_parameters.rate
+        batch_sizes = self.node_parameters.json['batch_size']
+        header_sizes = self.node_parameters.json['header_size']
+        quorum_thresholds = self.node_parameters.json['quorum_threshold']
+
+        total_runs = len(rates) * len(batch_sizes) * len(header_sizes) * len(quorum_thresholds)
         counter = 1
 
-        for input_rate in bench_parameters.rate:
-            level_config[input_rate] = (float('inf'), default_level)
-            for level in bench_parameters.levels:
-                Print.info(f"Running phase {counter} / {total_runs}")
-                counter += 1
-                bench_parameters_dict["input_rate"] = input_rate
-                bench_parameters = BenchParameters(bench_parameters_dict)
-                try:
-                    self._run_single(input_rate, committee, bench_parameters, level, learning, debug)
-                except (
-                    subprocess.SubprocessError,
-                    GroupException,
-                    ParseError,
-                ) as e:
-                    self.kill(hosts=selected_hosts)
-                    if isinstance(e, GroupException):
-                        e = FabricError(e)
-                    Print.error(BenchError("Learning failed", e))
-                    continue
+        for input_rate in rates:
+            for batch_size in batch_sizes:
+                for header_size in header_sizes:
+                    for quorum_threshold in quorum_thresholds:
+                        best_latency[input_rate] = (float('inf'), 0, 0, 0)
+                        Print.info(f"Running phase {counter} / {total_runs}")
+                        counter += 1
+                        self.bench_parameters_dict["input_rate"] = input_rate
+                        self.node_parameters_dict["batch_size"] = batch_size
+                        self.node_parameters_dict["header_size"] = header_size
+                        self.node_parameters_dict["quorum_threshold"] = quorum_threshold
+                        self.bench_parameters = BenchParameters(self.bench_parameters_dict)
+                        self.node_parameters = NodeParameters(self.node_parameters_dict)
+                        self.run(learning=True, debug=True)
 
-                latency = self._logs(committee, bench_parameters.faults)._end_to_end_latency()
-                print(f"input rate {input_rate}, level {level}, latency {latency}")
-                if latency < level_config[input_rate][0]:
-                    level_config[input_rate] = (latency, level)
+                        latency = LogParser.process(PathMaker.logs_path(), faults=self.faults)._end_to_end_latency()
+                        if latency > 0 and latency < best_latency[input_rate][0]:
+                            best_latency[input_rate] = (latency, batch_size, header_size, quorum_threshold)
 
         with open("system_level_config.txt", "w") as f:
-            for input_rate, (_, level) in level_config.items():
-                f.write(f"{input_rate} {level}\n")
+            for input_rate, (_, batch_size, header_size, quorum_threshold) in best_latency.items():
+                f.write(f"{input_rate},{batch_size},{header_size},{quorum_threshold}\n")
 
     def run(self, bench_parameters_dict, node_parameters_dict, param_type="static", debug=False):
         assert isinstance(debug, bool)
@@ -394,8 +390,6 @@ class Bench:
             e = FabricError(e) if isinstance(e, GroupException) else e
             raise BenchError("Failed to configure nodes", e)
         
-        learning = 1 if param_type == 'static' else 0
-
         # Run benchmarks.
         for n in bench_parameters.nodes:
             committee_copy = deepcopy(committee)
@@ -408,7 +402,7 @@ class Bench:
                 for i in range(bench_parameters.runs):
                     Print.heading(f"Run {i+1}/{bench_parameters.runs}")
                     try:
-                        self._run_single(r, committee_copy, bench_parameters, learning=learning, debug=debug)
+                        self._run_single(r, committee_copy, bench_parameters, debug=debug)
 
                         faults = bench_parameters.faults
                         logger = self._logs(committee_copy, faults, param_type)

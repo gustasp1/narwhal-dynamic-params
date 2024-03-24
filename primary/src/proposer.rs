@@ -124,6 +124,7 @@ impl Proposer {
     // Main loop listening to incoming messages.
     pub async fn run(&mut self) {
         debug!("Dag starting at round {}", self.round);
+        info!("Yo got header size: {}", self.header_size);
 
         //self.header_size = self.param_config.header_sizes[0];
         self.max_header_delay = 200;

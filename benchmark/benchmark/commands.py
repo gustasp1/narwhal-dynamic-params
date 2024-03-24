@@ -18,7 +18,7 @@ class CommandMaker:
 
     @staticmethod
     def compile():
-        return 'cargo build --quiet --release --features benchmark'
+        return 'cargo build --release --features benchmark'
 
     @staticmethod
     def generate_key(filename):
@@ -36,15 +36,14 @@ class CommandMaker:
                 f'--store {store} --parameters {parameters} primary')
 
     @staticmethod
-    def run_worker(keys, committee, store, parameters, id, level=1, learning=0, debug=False):
+    def run_worker(keys, committee, store, parameters, id, debug=False):
         assert isinstance(keys, str)
         assert isinstance(committee, str)
         assert isinstance(parameters, str)
         assert isinstance(debug, bool)
         v = '-vvv' if debug else '-vv'
         return (f'./node {v} run --keys {keys} --committee {committee} '
-                f'--store {store} --parameters {parameters} worker --id {id} --level {level} --learning {learning}')
-                # f'--store {store} --parameters {parameters} worker --id {id}')
+                f'--store {store} --parameters {parameters} worker --id {id}')
 
     @staticmethod
     def run_client(address, size, rate, nodes):

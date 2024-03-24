@@ -79,6 +79,8 @@ pub struct Parameters {
     /// The delay after which the workers seal a batch of transactions, even if `max_batch_size`
     /// is not reached. Denominated in ms.
     pub max_batch_delay: u64,
+    pub learning: bool,
+    pub quorum_threshold: String,
 }
 
 impl Default for Parameters {
@@ -91,6 +93,8 @@ impl Default for Parameters {
             sync_retry_nodes: 3,
             batch_size: 500_000,
             max_batch_delay: 100,
+            learning: false,
+            quorum_threshold: "2f+1".to_owned(),
         }
     }
 }
@@ -170,6 +174,17 @@ impl Committee {
         // then (2 N + 3) / 3 = 2f + 1 + (2k + 2)/3 = 2f + 1 + k = N - f
         let total_votes: Stake = self.authorities.values().map(|x| x.stake).sum();
         2 * total_votes / 3 + 1
+    }
+
+    /// Returns the stake required to reach a quorum (2f+1).
+    pub fn quorum_waiter_threshold(&self, qt: String) -> Stake {
+        let total_votes: Stake = self.authorities.values().map(|x| x.stake).sum();
+        match qt.as_str() {
+            "1" => 1,
+            "f" => total_votes / 3,
+            "f+1" => (total_votes + 2) / 3,
+            _ => 2 * total_votes / 3 + 1,
+        }
     }
 
     /// Returns the stake required to reach availability (f+1).

@@ -6,6 +6,7 @@ use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
 use network::CancelHandler;
 use tokio::sync::mpsc::{Receiver, Sender};
+use log::info;
 
 #[cfg(test)]
 #[path = "tests/quorum_waiter_tests.rs"]
@@ -31,15 +32,17 @@ pub struct QuorumWaiter {
     rx_message: Receiver<QuorumWaiterMessage>,
     /// Channel to deliver batches for which we have enough acknowledgements.
     tx_batch: Sender<ProcessorMessage>,
+    quorum_threshold: String,
 }
 
-impl QuorumWaiter {
+impl QuorumWaiter{
     /// Spawn a new QuorumWaiter.
     pub fn spawn(
         committee: Committee,
         stake: Stake,
         rx_message: Receiver<QuorumWaiterMessage>,
         tx_batch: Sender<ProcessorMessage>,
+        quorum_threshold: String,
     ) {
         tokio::spawn(async move {
             Self {
@@ -47,6 +50,7 @@ impl QuorumWaiter {
                 stake,
                 rx_message,
                 tx_batch,
+                quorum_threshold,
             }
             .run()
             .await;
@@ -61,6 +65,8 @@ impl QuorumWaiter {
 
     /// Main loop.
     async fn run(&mut self) {
+        info!("Yo got qt: {}", self.quorum_threshold);
+
         while let Some(QuorumWaiterMessage { batch, handlers, transaction_count}) = self.rx_message.recv().await {
 
             let mut wait_for_quorum: FuturesUnordered<_> = handlers
@@ -77,7 +83,7 @@ impl QuorumWaiter {
             let mut total_stake = self.stake;
             while let Some(stake) = wait_for_quorum.next().await {
                 total_stake += stake;
-                if total_stake >= self.committee.quorum_threshold() {
+                if total_stake >= self.committee.quorum_waiter_threshold(self.quorum_threshold.clone()) {
                     self.tx_batch
                         .send(ProcessorMessage { batch, transaction_count})
                         .await

@@ -82,7 +82,7 @@ pub struct ParameterOptimizer {
 }
 
 impl ParameterOptimizer {
-    pub fn new(tx_change_level: Sender<Vec<u8>>, total_worker_count: usize, level: usize) -> Self {
+    pub fn new(tx_change_level: Sender<Vec<u8>>, total_worker_count: usize) -> Self {
         info!("Total worker count: {}", total_worker_count);
         Self {
             input_rate: InputRate::new(),
@@ -192,7 +192,6 @@ impl BatchMaker {
         tx_change_level: Sender<Vec<u8>>,
         workers_addresses: Vec<(PublicKey, SocketAddr)>,
         total_worker_count: usize,
-        level: usize,
         learning: bool,
     ) {
         tokio::spawn(async move {
@@ -205,7 +204,7 @@ impl BatchMaker {
                 current_batch: Batch::with_capacity(batch_size * 2),
                 current_batch_size: 0,
                 network: ReliableSender::new(),
-                parameter_optimizer: ParameterOptimizer::new(tx_change_level, total_worker_count, level),
+                parameter_optimizer: ParameterOptimizer::new(tx_change_level, total_worker_count),
                 learning,
             }
             .run()
@@ -215,6 +214,7 @@ impl BatchMaker {
 
     /// Main loop receiving incoming transactions and creating batches.
     async fn run(&mut self) {
+        info!("Yo got batch size: {} {}", self.batch_size, self.learning);
         let timer = sleep(Duration::from_millis(self.max_batch_delay));
         tokio::pin!(timer);
         self.parameter_optimizer.load_config();
@@ -230,7 +230,7 @@ impl BatchMaker {
                         self.parameter_optimizer.first_tx_recvd = true;
                         self.parameter_optimizer.first_tx_time = Instant::now();
                     }
-                    if self.current_batch_size >= self.parameter_optimizer.batch_sizes[self.parameter_optimizer.current_level] {
+                    if self.current_batch_size >= self.batch_size {
                         self.seal().await;
                         timer.as_mut().reset(Instant::now() + Duration::from_millis(self.max_batch_delay));
                     }

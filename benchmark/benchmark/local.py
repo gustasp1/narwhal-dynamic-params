@@ -38,31 +38,41 @@ class LocalBench:
             raise BenchError('Failed to kill testbed', e)
         
     def learn(self):
-        default_level = 1
-        level_config = {}
+        best_latency = {}
+        rates = self.bench_parameters.rate
+        batch_sizes = self.node_parameters.json['batch_size']
+        header_sizes = self.node_parameters.json['header_size']
+        quorum_thresholds = self.node_parameters.json['quorum_threshold']
 
-        total_runs = len(self.bench_parameters.rate) * len(self.bench_parameters.levels)
+        total_runs = len(rates) * len(batch_sizes) * len(header_sizes) * len(quorum_thresholds)
         counter = 1
+        self.node_parameters_dict["quorum_threshold"] = True
 
-        for input_rate in self.bench_parameters.rate:
-            level_config[input_rate] = (float('inf'), default_level)
-            for level in self.bench_parameters.levels:
-                Print.info(f"Running phase {counter} / {total_runs}")
-                counter += 1
-                self.bench_parameters_dict["input_rate"] = input_rate
-                self.bench_parameters = BenchParameters(self.bench_parameters_dict)
-                self.run(level, learning=1, debug=True)
+        for input_rate in rates:
+            for batch_size in batch_sizes:
+                for header_size in header_sizes:
+                    for quorum_threshold in quorum_thresholds:
+                        best_latency[input_rate] = (float('inf'), 0, 0, 0)
+                        Print.info(f"Running phase {counter} / {total_runs}")
+                        counter += 1
+                        self.bench_parameters_dict["input_rate"] = input_rate
+                        self.node_parameters_dict["batch_size"] = batch_size
+                        self.node_parameters_dict["header_size"] = header_size
+                        self.node_parameters_dict["quorum_threshold"] = quorum_threshold
+                        self.bench_parameters = BenchParameters(self.bench_parameters_dict)
+                        self.node_parameters = NodeParameters(self.node_parameters_dict)
+                        self.run(learning=True, debug=True)
 
-                latency = LogParser.process(PathMaker.logs_path(), faults=self.faults)._end_to_end_latency()
-                if latency < level_config[input_rate][0]:
-                    level_config[input_rate] = (latency, level)
+                        latency = LogParser.process(PathMaker.logs_path(), faults=self.faults)._end_to_end_latency()
+                        if latency > 0 and latency < best_latency[input_rate][0]:
+                            best_latency[input_rate] = (latency, batch_size, header_size, quorum_threshold)
 
         with open("system_level_config.txt", "w") as f:
-            for input_rate, (_, level) in level_config.items():
-                f.write(f"{input_rate} {level}\n")
+            for input_rate, (_, batch_size, header_size, quorum_threshold) in best_latency.items():
+                f.write(f"{input_rate},{batch_size},{header_size},{quorum_threshold}\n")
 
 
-    def run(self, level=1, learning=0, debug=False):
+    def run(self, learning=True, debug=False):
         assert isinstance(debug, bool)
         Print.heading('Starting local benchmark')
 
@@ -135,8 +145,6 @@ class LocalBench:
                         PathMaker.db_path(i, id),
                         PathMaker.parameters_file(),
                         id,  # The worker's id.
-                        level,
-                        learning,
                         debug=debug
                     )
                     log_file = PathMaker.worker_log_file(i, id)
