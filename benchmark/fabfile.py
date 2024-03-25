@@ -16,9 +16,9 @@ def local(ctx, debug=True):
         'faults': 0,
         'nodes': 4,
         'workers': 1,
-        'rate': 5_000,
+        'rate': 8_500,
         'tx_size': 512,
-        'duration': 2,
+        'duration': 10,
     }
     node_params = {
         'header_size': 1_000,  # bytes
@@ -27,7 +27,9 @@ def local(ctx, debug=True):
         'sync_retry_delay': 10_000,  # ms
         'sync_retry_nodes': 3,  # number of nodes
         'batch_size': 500_000,  # bytes
-        'max_batch_delay': 200  # ms
+        'max_batch_delay': 200,  # ms
+        'learning': False,
+        'quorum_threshold': '2f+1',
     }
     try:
         ret = LocalBench(bench_params, node_params).run(debug=debug)
@@ -82,7 +84,7 @@ def destroy(ctx):
 
 
 @task
-def start(ctx, max=1):
+def start(ctx, max=2):
     ''' Start at most `max` machines per data center '''
     try:
         InstanceManager.make().start_instances(max)
@@ -149,23 +151,22 @@ def learnremote(ctx, debug=True):
     ''' Run benchmarks on localhost '''
     bench_params = {
         'faults': 0,
-        'nodes': 5,
+        'nodes': 10,
         'workers': 1,
-        'rate': [1_000],
-        'duration': 10,
+        'rate': [1_000, 30_000],
+        'duration': 50,
         'tx_size': 512,
     }
     node_params = {
-        'header_size': [1_002],  # bytes
+        'header_size': [1_000],  # bytes
         'max_header_delay': 200,  # ms
         'gc_depth': 50,  # rounds
         'sync_retry_delay': 10_000,  # ms
         'sync_retry_nodes': 3,  # number of nodes
-        'batch_size': [13],  # bytes
+        'batch_size': [1, 500_000],  # bytes
         'max_batch_delay': 200,  # ms
-        'quorum_threshold': ['f'],
-        'duration': 2,
-        'learning': True,
+        'quorum_threshold': ['2f+1'],  # 1, f, f+1, or 2f+1
+        'learning': True,  # true by default 
     }
     try:
         Bench(ctx).learn(bench_params, node_params, 1, debug)

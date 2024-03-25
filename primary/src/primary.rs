@@ -54,7 +54,7 @@ pub enum WorkerPrimaryMessage {
     /// The worker indicates it received a batch's digest from another authority.
     OthersBatch(Digest, WorkerId),
     /// The worker indicates that system level has to be changed
-    ChangeLevel(usize),
+    ChangeHeader(usize),
 }
 
 pub struct Primary;
@@ -70,7 +70,7 @@ impl Primary {
     ) {
         let (tx_others_digests, rx_others_digests) = channel(CHANNEL_CAPACITY);
         let (tx_our_digests, rx_our_digests) = channel(CHANNEL_CAPACITY);
-        let (tx_change_level, rx_change_level) = channel(CHANNEL_CAPACITY);
+        let (tx_change_header_size, rx_change_header_size) = channel(CHANNEL_CAPACITY);
         let (tx_parents, rx_parents) = channel(CHANNEL_CAPACITY);
         let (tx_headers, rx_headers) = channel(CHANNEL_CAPACITY);
         let (tx_sync_headers, rx_sync_headers) = channel(CHANNEL_CAPACITY);
@@ -122,7 +122,7 @@ impl Primary {
             WorkerReceiverHandler {
                 tx_our_digests,
                 tx_others_digests,
-                tx_change_level,
+                tx_change_header_size,
             },
         );
         info!(
@@ -198,7 +198,7 @@ impl Primary {
             parameters.max_header_delay,
             /* rx_core */ rx_parents,
             /* rx_workers */ rx_our_digests,
-            rx_change_level,
+            rx_change_header_size,
             /* tx_core */ tx_headers,
         );
 
@@ -253,7 +253,7 @@ impl MessageHandler for PrimaryReceiverHandler {
 struct WorkerReceiverHandler {
     tx_our_digests: Sender<(Digest, WorkerId)>,
     tx_others_digests: Sender<(Digest, WorkerId)>,
-    tx_change_level: Sender<usize>,
+    tx_change_header_size: Sender<usize>,
 }
 
 #[async_trait]
@@ -275,9 +275,9 @@ impl MessageHandler for WorkerReceiverHandler {
                 .send((digest, worker_id))
                 .await
                 .expect("Failed to send workers' digests"),
-            WorkerPrimaryMessage::ChangeLevel(level) => self
-                .tx_change_level
-                .send(level)
+            WorkerPrimaryMessage::ChangeHeader(header_size) => self
+                .tx_change_header_size
+                .send(header_size)
                 .await
                 .expect("Failed to send system level change"),
         }

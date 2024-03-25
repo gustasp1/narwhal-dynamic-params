@@ -30,7 +30,7 @@ pub struct Proposer {
     /// Receives the batches' digests from our workers.
     rx_workers: Receiver<(Digest, WorkerId)>,
     /// Receives level change from our workers.
-    rx_change_level: Receiver<usize>,
+    rx_change_header_size: Receiver<usize>,
     /// Sends newly created headers to the `Core`.
     tx_core: Sender<Header>,
 
@@ -42,15 +42,6 @@ pub struct Proposer {
     digests: Vec<(Digest, WorkerId)>,
     /// Keeps track of the size (in bytes) of batches' digests that we received so far.
     payload_size: usize,
-    /// Header sizes and delays, set based on the current system level
-    param_config: ProposerParameterConfig,
-}
-
-pub struct ProposerParameterConfig {
-    /// Header sizes for different system levels.
-    header_sizes: Vec<usize>,
-    /// Header delays for different system levels.
-    header_delays: Vec<u64>,
 }
 
 impl Proposer {
@@ -63,14 +54,13 @@ impl Proposer {
         max_header_delay: u64,
         rx_core: Receiver<(Vec<Digest>, Round)>,
         rx_workers: Receiver<(Digest, WorkerId)>,
-        rx_change_level: Receiver<usize>,
+        rx_change_header_size: Receiver<usize>,
         tx_core: Sender<Header>,
     ) {
         let genesis = Certificate::genesis(committee)
             .iter()
             .map(|x| x.digest())
             .collect();
-        info!("proposer header size {}", header_size);
 
         tokio::spawn(async move {
             Self {
@@ -80,16 +70,12 @@ impl Proposer {
                 max_header_delay,
                 rx_core,
                 rx_workers,
-                rx_change_level,
+                rx_change_header_size,
                 tx_core,
                 round: 1,
                 last_parents: genesis,
                 digests: Vec::with_capacity(2 * header_size),
                 payload_size: 0,
-                param_config: ProposerParameterConfig {
-                    header_sizes: vec![1, 1, 1_000],
-                    header_delays: vec![200, 200, 200],
-                },
             }
             .run()
             .await;
@@ -124,10 +110,7 @@ impl Proposer {
     // Main loop listening to incoming messages.
     pub async fn run(&mut self) {
         debug!("Dag starting at round {}", self.round);
-        info!("Yo got header size: {}", self.header_size);
-
-        //self.header_size = self.param_config.header_sizes[0];
-        self.max_header_delay = 200;
+        info!("Got header size: {}", self.header_size);
 
         let timer = sleep(Duration::from_millis(self.max_header_delay));
         tokio::pin!(timer);
@@ -168,10 +151,9 @@ impl Proposer {
                     self.payload_size += digest.size();
                     self.digests.push((digest, worker_id));
                 },
-                Some(level) = self.rx_change_level.recv() => {
-                    info!("received level {}", level);
-                    self.header_size = self.param_config.header_sizes[level];
-                    self.max_header_delay = self.param_config.header_delays[level];
+                Some(header_size) = self.rx_change_header_size.recv() => {
+                    info!("Proposer received new header size {}", header_size);
+                    self.header_size = header_size;
                 }
                 () = &mut timer => {
                     // Nothing to do.

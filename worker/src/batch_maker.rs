@@ -10,8 +10,8 @@ use ed25519_dalek::{Digest as _, Sha512};
 #[cfg(feature = "benchmark")]
 use log::info;
 use network::ReliableSender;
-// use primary::WorkerPrimaryMessage;
-use std::collections::{VecDeque, HashMap};
+use primary::WorkerPrimaryMessage;
+use std::collections::{BTreeMap, VecDeque};
 #[cfg(feature = "benchmark")]
 use std::convert::TryInto as _;
 use std::fs;
@@ -61,102 +61,133 @@ pub struct InputRate {
     transaction_rate: u64,
 }
 
+#[derive(Clone)]
+pub struct Parameters {
+    input_rate: usize,
+    batch_size: usize,
+    header_size: usize,
+    quorum_threshold: String,
+}
+
+
+impl Parameters {
+    pub fn new(input_rate: usize, batch_size: usize, header_size: usize, quorum_threshold: String) -> Self {
+        Self {
+            input_rate,
+            batch_size,
+            header_size,
+            quorum_threshold,
+        }
+    }
+
+    pub fn default() -> Self {
+        Self {
+            input_rate: 0,
+            batch_size: 500_000,
+            header_size: 1_000,
+            quorum_threshold: "2f+1".to_owned(),
+        }
+    }
+}
+
 pub struct ParameterOptimizer {
     // Current input rate,
     input_rate: InputRate,
     // Time when the system started.
     first_tx_time: Instant,
     first_tx_recvd: bool,
-    // Current system level. Lower levels optimize for latency, higher levels for throughput.
-    current_level: usize,
-    // Max level the system can have. Currently it is only 1, will be increased in the future.
-    batch_sizes: Vec<usize>,
     // // Output channel to inform proposer about changing system level.
-    // tx_change_level: Sender<Vec<u8>>,
+    tx_change_header_size: Sender<Vec<u8>>,
     // Maps input rate to system level
-    config_map: HashMap<u64, usize>,
-    // Known input rates sorted in descending order.
-    sorted_input_rates: Vec<u64>,
+    config_map: BTreeMap<usize, Parameters>,
     // Total number of workers
     total_worker_count: usize,
+    current_params: Parameters,
 }
 
 impl ParameterOptimizer {
-    pub fn new(tx_change_level: Sender<Vec<u8>>, total_worker_count: usize) -> Self {
+    pub fn new(tx_change_header_size: Sender<Vec<u8>>, total_worker_count: usize) -> Self {
         info!("Total worker count: {}", total_worker_count);
         Self {
             input_rate: InputRate::new(),
             first_tx_time: Instant::now(),
             first_tx_recvd: false,
-            current_level: 2,
-            batch_sizes: vec![1, 1_000, 500_000],
-            // tx_change_level,
-            config_map: HashMap::new(),
-            sorted_input_rates: Vec::new(),
+            tx_change_header_size,
+            config_map: BTreeMap::new(),
             total_worker_count,
+            current_params: Parameters::new(1_000_000, 500_000, 1_000, "2f+1".to_owned()),
         }
     }
 
-    pub async fn adjust_parameters(&mut self) {
+    pub async fn adjust_parameters(&mut self, batch_size: &mut usize) {
         if self.first_tx_time.elapsed().as_millis() >= MININUM_RUNNING_TIME {
-            let current_rate = self.get_current_rate();
-            for &input_rate in self.sorted_input_rates.iter() {
-                if current_rate < input_rate / self.total_worker_count as u64 {
-                    if self.config_map[&input_rate] != self.current_level {
-                        info!("At rate {} changing system level to {}", current_rate, self.config_map[&input_rate]);
-                        self.change_level(self.config_map[&input_rate]).await;
-                    }
-                    break;
-                }
+            let current_rate = self.get_current_rate() * self.total_worker_count;
+            // Find the parameters associated with the first input rate that's larger
+            // than the current rate
+            let entry = self
+                .config_map
+                .range(current_rate..)
+                .next()
+                .map(|(k, v)| (*k, v.clone()))
+                .unwrap_or_else(|| (0, Parameters::default()));
+            let next_input_rate = entry.0;
+            if next_input_rate != self.current_params.input_rate {
+                let params = entry.1;
+                info!("At rate {}, changing params to {} {} {}", current_rate, params.batch_size, params.header_size, params.quorum_threshold);
+                self.current_params = params.clone();
+                *batch_size = params.batch_size;
+                self.inform_proposer(params.header_size).await;
             }
         }
     }
 
-    fn get_current_rate(&self) -> u64 {
+    fn get_current_rate(&self) -> usize {
         // let elapsed = self.first_tx_time.elapsed().as_millis();
         // if elapsed < ONE_SECOND_IN_MILLIS {
         //     return self.input_rate.transaction_rate / ((elapsed * ONE_SECOND_IN_MILLIS) as u64);
         // }
-        self.input_rate.transaction_rate
+        self.input_rate.transaction_rate as usize
     }
 
-    async fn change_level(&mut self, new_level: usize) {
-        self.current_level = new_level;
+    async fn inform_proposer(&self, header_size: usize) {
+        // Change the level of proposer
+        let message = WorkerPrimaryMessage::ChangeHeader(header_size);
+        let message = bincode::serialize(&message)
+            .expect("Failed to serialize change level message");
 
-        // // Change the level of proposer
-        // let message = WorkerPrimaryMessage::ChangeLevel(new_level);
-        // let message = bincode::serialize(&message)
-        //     .expect("Failed to serialize change level message");
-
-        // self.tx_change_level
-        //     .send(message)
-        //     .await
-        //     .expect("Failed to send level change to proposer");
+        self.tx_change_header_size
+            .send(message)
+            .await
+            .expect("Failed to send level change to proposer");
     }
 
     fn load_config(&mut self) {
         match fs::read_to_string("system_level_config.txt") {
             Ok(data) => {
                 for line in data.lines() {
-                    let mut split_line = line.split_whitespace();
-                    if let (Some(input_rate), Some(level)) = (split_line.next(), split_line.next()) {
-                        self.config_map.insert(
-                            input_rate.parse::<u64>().unwrap(),
-                            level.parse::<usize>().unwrap()
-                        );
-                    }
+                    let parts: Vec<&str> = line.split(",").collect();
+                    assert!(parts.len() == 4, "Parameter config has to contain 4 fields.");
+                    let input_rate = parts[0].parse::<usize>().unwrap();
+                    let batch_size = parts[1].parse::<usize>().unwrap();
+                    let header_size = parts[2].parse::<usize>().unwrap();
+                    let quorum_threshold = parts[3].to_owned();
+                    self.config_map.insert(input_rate, Parameters::new(input_rate, batch_size, header_size, quorum_threshold));
                 }
             },
             Err(_) => {
                 // Default config
-                self.config_map.insert(5_000, 0);
-                self.config_map.insert(6_000, 1);
-                self.config_map.insert(1_000_000, 2);
+                self.config_map.insert(3_000, Parameters::new(3_000, 1, 1, "f".to_owned()));
+                self.config_map.insert(8_000, Parameters::new( 8_000, 1, 1, "f+1".to_owned()));
+                self.config_map.insert(1_000_000, Parameters::new(1_000_000, 500_000, 1_000, "2f+1".to_owned()));
             }
         };
 
-        self.sorted_input_rates = self.config_map.keys().cloned().collect();
-        self.sorted_input_rates.sort();
+        // for (key, value) in self.config_map.iter() {
+        //     info!("herehere {} {} {} {}", key, value.batch_size, value.header_size, value.quorum_threshold);
+        // }
+
+        // self.sorted_input_rates = self.config_map.keys().cloned().collect();
+        // self.sorted_input_rates.sort();
     }
 }
 
@@ -189,7 +220,7 @@ impl BatchMaker {
         max_batch_delay: u64,
         rx_transaction: Receiver<Transaction>,
         tx_message: Sender<QuorumWaiterMessage>,
-        tx_change_level: Sender<Vec<u8>>,
+        tx_change_header_size: Sender<Vec<u8>>,
         workers_addresses: Vec<(PublicKey, SocketAddr)>,
         total_worker_count: usize,
         learning: bool,
@@ -204,7 +235,7 @@ impl BatchMaker {
                 current_batch: Batch::with_capacity(batch_size * 2),
                 current_batch_size: 0,
                 network: ReliableSender::new(),
-                parameter_optimizer: ParameterOptimizer::new(tx_change_level, total_worker_count),
+                parameter_optimizer: ParameterOptimizer::new(tx_change_header_size, total_worker_count),
                 learning,
             }
             .run()
@@ -260,7 +291,7 @@ impl BatchMaker {
             self.parameter_optimizer
                 .input_rate
                 .add_transactions(transaction_count as u64);
-            self.parameter_optimizer.adjust_parameters().await;
+            self.parameter_optimizer.adjust_parameters(&mut self.batch_size).await;
         }
 
         // Look for sample txs (they all start with 0) and gather their txs id (the next 8 bytes).
