@@ -7,6 +7,7 @@ use tokio::sync::mpsc::channel;
 async fn make_batch() {
     let (tx_transaction, rx_transaction) = channel(1);
     let (tx_message, mut rx_message) = channel(1);
+    let (tx_change_header_size, _rx_change_header_size) = channel(1);
     let dummy_addresses = vec![(PublicKey::default(), "127.0.0.1:0".parse().unwrap())];
 
     // Spawn a `BatchMaker` instance.
@@ -15,7 +16,10 @@ async fn make_batch() {
         /* max_batch_delay */ 1_000_000, // Ensure the timer is not triggered.
         rx_transaction,
         tx_message,
+        tx_change_header_size,
         /* workers_addresses */ dummy_addresses,
+        5,
+        true,
     );
 
     // Send enough transactions to seal a batch.
@@ -24,9 +28,9 @@ async fn make_batch() {
 
     // Ensure the batch is as expected.
     let expected_batch = vec![transaction(), transaction()];
-    let QuorumWaiterMessage { batch, handlers: _ } = rx_message.recv().await.unwrap();
+    let QuorumWaiterMessage { batch, handlers: _ , transaction_count:__} = rx_message.recv().await.unwrap();
     match bincode::deserialize(&batch).unwrap() {
-        WorkerMessage::Batch(batch) => assert_eq!(batch, expected_batch),
+        WorkerMessage::Batch(batch, _transaction_count) => assert_eq!(batch, expected_batch),
         _ => panic!("Unexpected message"),
     }
 }
@@ -35,6 +39,7 @@ async fn make_batch() {
 async fn batch_timeout() {
     let (tx_transaction, rx_transaction) = channel(1);
     let (tx_message, mut rx_message) = channel(1);
+    let (tx_change_header_size, _rx_change_header_size) = channel(1);
     let dummy_addresses = vec![(PublicKey::default(), "127.0.0.1:0".parse().unwrap())];
 
     // Spawn a `BatchMaker` instance.
@@ -43,7 +48,10 @@ async fn batch_timeout() {
         /* max_batch_delay */ 50, // Ensure the timer is triggered.
         rx_transaction,
         tx_message,
+        tx_change_header_size,
         /* workers_addresses */ dummy_addresses,
+        5,
+        true,
     );
 
     // Do not send enough transactions to seal a batch..
@@ -51,9 +59,9 @@ async fn batch_timeout() {
 
     // Ensure the batch is as expected.
     let expected_batch = vec![transaction()];
-    let QuorumWaiterMessage { batch, handlers: _ } = rx_message.recv().await.unwrap();
+    let QuorumWaiterMessage { batch, handlers: _ , transaction_count: _} = rx_message.recv().await.unwrap();
     match bincode::deserialize(&batch).unwrap() {
-        WorkerMessage::Batch(batch) => assert_eq!(batch, expected_batch),
+        WorkerMessage::Batch(batch, _transaction_count) => assert_eq!(batch, expected_batch),
         _ => panic!("Unexpected message"),
     }
 }

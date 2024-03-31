@@ -15,10 +15,17 @@ async fn wait_for_quorum() {
     let committee = committee_with_base_port(7_000);
 
     // Spawn a `QuorumWaiter` instance.
-    QuorumWaiter::spawn(committee.clone(), /* stake */ 1, rx_message, tx_batch);
+    QuorumWaiter::spawn(
+        committee.clone(),
+         /* stake */ 1,
+        rx_message,
+        tx_batch,
+        "2f+1".to_owned(),
+        );
 
     // Make a batch.
-    let message = WorkerMessage::Batch(batch());
+    let transaction_count = 0;
+    let message = WorkerMessage::Batch(batch(), transaction_count);
     let serialized = bincode::serialize(&message).unwrap();
     let expected = Bytes::from(serialized.clone());
 
@@ -42,11 +49,12 @@ async fn wait_for_quorum() {
     let message = QuorumWaiterMessage {
         batch: serialized.clone(),
         handlers: names.into_iter().zip(handlers.into_iter()).collect(),
+        transaction_count
     };
     tx_message.send(message).await.unwrap();
 
     // Wait for the `QuorumWaiter` to gather enough acknowledgements and output the batch.
-    let output = rx_batch.recv().await.unwrap();
+    let output = rx_batch.recv().await.unwrap().batch;
     assert_eq!(output, serialized);
 
     // Ensure the other listeners correctly received the batch.

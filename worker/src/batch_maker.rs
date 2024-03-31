@@ -7,7 +7,6 @@ use crypto::Digest;
 use crypto::PublicKey;
 #[cfg(feature = "benchmark")]
 use ed25519_dalek::{Digest as _, Sha512};
-#[cfg(feature = "benchmark")]
 use log::info;
 use network::ReliableSender;
 use primary::WorkerPrimaryMessage;
@@ -24,7 +23,11 @@ use tokio::time::{sleep, Duration, Instant};
 #[path = "tests/batch_maker_tests.rs"]
 pub mod batch_maker_tests;
 
-const ONE_SECOND_IN_MILLIS: u128 = 1_000;
+#[cfg(test)]
+#[path = "tests/parameter_adjustment_tests.rs"]
+pub mod parameter_adjustment_tests;
+
+const ONE_SECOND_IN_MILLIS: u64 = 1_000;
 const MININUM_RUNNING_TIME: u128 = 1_000;
 
 pub type Transaction = Vec<u8>;
@@ -55,13 +58,12 @@ pub struct BatchMaker {
 }
 
 pub struct InputRate {
-    // Queue of previous tranasctions, used to remove old transactions to calculate new rate.
-    transaction_queue: VecDeque<(u64, u64)>,
-    // Current input rate (transactions / sec).
-    transaction_rate: u64,
+    
 }
 
 #[derive(Clone)]
+#[derive(PartialEq)]
+#[derive(Debug)]
 pub struct Parameters {
     input_rate: usize,
     batch_size: usize,
@@ -91,8 +93,6 @@ impl Parameters {
 }
 
 pub struct ParameterOptimizer {
-    // Current input rate,
-    input_rate: InputRate,
     // Time when the system started.
     first_tx_time: Instant,
     first_tx_recvd: bool,
@@ -103,19 +103,24 @@ pub struct ParameterOptimizer {
     // Total number of workers
     total_worker_count: usize,
     current_params: Parameters,
+    // Queue of previous tranasctions, used to remove old transactions to calculate new rate.
+    transaction_queue: VecDeque<(u64, u64)>,
+    // Current input rate (transactions / sec).
+    transaction_rate: u64,
 }
 
 impl ParameterOptimizer {
     pub fn new(tx_change_header_size: Sender<Vec<u8>>, total_worker_count: usize) -> Self {
         info!("Total worker count: {}", total_worker_count);
         Self {
-            input_rate: InputRate::new(),
             first_tx_time: Instant::now(),
             first_tx_recvd: false,
             tx_change_header_size,
             config_map: BTreeMap::new(),
             total_worker_count,
-            current_params: Parameters::new(1_000_000, 500_000, 1_000, "2f+1".to_owned()),
+            current_params: Parameters::new(1_000_001, 500_000, 1_000, "2f+1".to_owned()),
+            transaction_queue: VecDeque::new(),
+            transaction_rate: 0,
         }
     }
 
@@ -142,11 +147,11 @@ impl ParameterOptimizer {
     }
 
     fn get_current_rate(&self) -> usize {
-        // let elapsed = self.first_tx_time.elapsed().as_millis();
-        // if elapsed < ONE_SECOND_IN_MILLIS {
-        //     return self.input_rate.transaction_rate / ((elapsed * ONE_SECOND_IN_MILLIS) as u64);
-        // }
-        self.input_rate.transaction_rate as usize
+        let elapsed = self.first_tx_time.elapsed().as_millis() as u64;
+        if elapsed < ONE_SECOND_IN_MILLIS && elapsed > 0 {
+            return (self.transaction_rate * ONE_SECOND_IN_MILLIS / elapsed) as usize;
+        }
+        self.transaction_rate as usize
     }
 
     async fn inform_proposer(&self, header_size: usize) {
@@ -181,22 +186,6 @@ impl ParameterOptimizer {
                 self.config_map.insert(1_000_000, Parameters::new(1_000_000, 500_000, 1_000, "2f+1".to_owned()));
             }
         };
-
-        // for (key, value) in self.config_map.iter() {
-        //     info!("herehere {} {} {} {}", key, value.batch_size, value.header_size, value.quorum_threshold);
-        // }
-
-        // self.sorted_input_rates = self.config_map.keys().cloned().collect();
-        // self.sorted_input_rates.sort();
-    }
-}
-
-impl InputRate {
-    pub fn new() -> Self {
-        Self {
-            transaction_queue: VecDeque::new(),
-            transaction_rate: 0,
-        }
     }
 
     pub fn add_transactions(&mut self, size: u64) {
@@ -208,11 +197,12 @@ impl InputRate {
         self.transaction_rate += size;
 
         // remove old measurements
-        while self.transaction_queue.len() > 0 && self.transaction_queue.front().unwrap().0 + (ONE_SECOND_IN_MILLIS as u64) < now {
+        while self.transaction_queue.len() > 0 && self.transaction_queue.front().unwrap().0 + ONE_SECOND_IN_MILLIS < now {
             self.transaction_rate -= self.transaction_queue.pop_front().unwrap().1;
         }
     }
 }
+
 
 impl BatchMaker {
     pub fn spawn(
@@ -289,7 +279,6 @@ impl BatchMaker {
         let transaction_count = self.current_batch.len();
         if !self.learning {
             self.parameter_optimizer
-                .input_rate
                 .add_transactions(transaction_count as u64);
             self.parameter_optimizer.adjust_parameters(&mut self.batch_size).await;
         }

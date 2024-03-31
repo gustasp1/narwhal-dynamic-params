@@ -26,13 +26,14 @@ async fn hash_and_store() {
     );
 
     // Send a batch to the `Processor`.
-    let message = WorkerMessage::Batch(batch());
+    let transaction_count = 0;
+    let message = WorkerMessage::Batch(batch(), transaction_count);
     let serialized = bincode::serialize(&message).unwrap();
-    tx_batch.send(serialized.clone()).await.unwrap();
+    tx_batch.send(ProcessorMessage{batch: serialized.clone(), transaction_count}).await.unwrap();
 
     // Ensure the `Processor` outputs the batch's digest.
     let output = rx_digest.recv().await.unwrap();
-    let digest = Digest(
+    let digest = Digest::new_with_hash(
         Sha512::digest(&serialized).as_slice()[..32]
             .try_into()
             .unwrap(),

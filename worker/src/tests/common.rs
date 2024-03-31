@@ -8,10 +8,16 @@ use ed25519_dalek::Digest as _;
 use ed25519_dalek::Sha512;
 use futures::sink::SinkExt as _;
 use futures::stream::StreamExt as _;
+use primary::WorkerPrimaryMessage;
 use rand::rngs::StdRng;
 use rand::SeedableRng as _;
+use tokio::sync::mpsc::Receiver;
+use tokio::time::timeout;
 use std::convert::TryInto as _;
+use std::fs::File;
+use std::io::{Result, Read, Write};
 use std::net::SocketAddr;
+use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
@@ -95,13 +101,13 @@ pub fn batch() -> Batch {
 
 // Fixture
 pub fn serialized_batch() -> Vec<u8> {
-    let message = WorkerMessage::Batch(batch());
+    let message = WorkerMessage::Batch(batch(), 0);
     bincode::serialize(&message).unwrap()
 }
 
 // Fixture
 pub fn batch_digest() -> Digest {
-    Digest(
+    Digest::new_with_hash(
         Sha512::digest(&serialized_batch()).as_slice()[..32]
             .try_into()
             .unwrap(),

@@ -11,6 +11,7 @@ async fn propose_empty() {
     let (_tx_parents, rx_parents) = channel(1);
     let (_tx_our_digests, rx_our_digests) = channel(1);
     let (tx_headers, mut rx_headers) = channel(1);
+    let (_tx_change_header_size, rx_change_header_size) = channel(1);
 
     // Spawn the proposer.
     Proposer::spawn(
@@ -21,6 +22,7 @@ async fn propose_empty() {
         /* max_header_delay */ 20,
         /* rx_core */ rx_parents,
         /* rx_workers */ rx_our_digests,
+        rx_change_header_size,
         /* tx_core */ tx_headers,
     );
 
@@ -39,6 +41,7 @@ async fn propose_payload() {
     let (_tx_parents, rx_parents) = channel(1);
     let (tx_our_digests, rx_our_digests) = channel(1);
     let (tx_headers, mut rx_headers) = channel(1);
+    let (_tx_change_header_size, rx_change_header_size) = channel(1);
 
     // Spawn the proposer.
     Proposer::spawn(
@@ -49,11 +52,12 @@ async fn propose_payload() {
         /* max_header_delay */ 1_000_000, // Ensure it is not triggered.
         /* rx_core */ rx_parents,
         /* rx_workers */ rx_our_digests,
+        rx_change_header_size,
         /* tx_core */ tx_headers,
     );
 
     // Send enough digests for the header payload.
-    let digest = Digest(name.0);
+    let digest = Digest::new_with_hash(name.0);
     let worker_id = 0;
     tx_our_digests
         .send((digest.clone(), worker_id))
