@@ -220,13 +220,19 @@ class Bench:
         Print.info("Booting clients...")
         workers_addresses = committee.workers_addresses(faults)
         rate_share = ceil(rate / committee.workers())
+        low_rate_share = ceil(bench_parameters.fluc_low_rate / committee.workers())
+        high_rate_share = ceil(bench_parameters.fluc_high_rate / committee.workers())
         for i, addresses in enumerate(workers_addresses):
             for id, address in addresses:
                 host = Committee.ip(address)
                 cmd = CommandMaker.run_client(
                     address,
                     bench_parameters.tx_size,
+                    bench_parameters.fluctuation,
+                    bench_parameters.duty_cycle_duration,
                     rate_share,
+                    low_rate_share,
+                    high_rate_share,
                     [x for y in workers_addresses for _, x in y],
                 )
                 log_file = PathMaker.client_log_file(i, id)
@@ -374,7 +380,6 @@ class Bench:
                         )
 
                         latency = LogParser.process(PathMaker.logs_path(), faults=bench_parameters_dict['faults'])._end_to_end_latency()
-                        Print.info(f"latency:::::::::::::::::::::::::::::: {latency}")
                         if latency > 0 and latency < best_latency[input_rate][0]:
                             best_latency[input_rate] = (latency, batch_size, header_size, quorum_threshold)
 

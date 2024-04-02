@@ -21,7 +21,11 @@ async fn main() -> Result<()> {
         .args_from_usage("<ADDR> 'The network address of the node where to send txs'")
         .args_from_usage("--size=<INT> 'The size of each transaction in bytes'")
         .args_from_usage("--rate=<INT> 'The rate (txs/s) at which to send the transactions'")
+        .args_from_usage("--low_rate=<INT> 'The low rate (txs/s).'")
+        .args_from_usage("--high_rate=<INT> 'The high rate (txs/s).'")
+        .args_from_usage("--duty_cycle_duration=<INT> 'The duration after which fluctuation switches to different load.'")
         .args_from_usage("--nodes=[ADDR]... 'Network addresses that must be reachable before starting the benchmark.'")
+        .args_from_usage("--fluctuation=<INT>... 'Network addresses that must be reachable before starting the benchmark.'")
         .setting(AppSettings::ArgRequiredElseHelp)
         .get_matches();
 
@@ -44,6 +48,21 @@ async fn main() -> Result<()> {
         .unwrap()
         .parse::<u64>()
         .context("The rate of transactions must be a non-negative integer")?;
+    let low_rate = matches
+        .value_of("low_rate")
+        .unwrap()
+        .parse::<u64>()
+        .context("The low_rate of transactions must be a non-negative integer")?;
+    let high_rate = matches
+        .value_of("high_rate")
+        .unwrap()
+        .parse::<u64>()
+        .context("The high_rate of transactions must be a non-negative integer")?;
+    let duty_cycle_duration = matches
+        .value_of("duty_cycle_duration")
+        .unwrap()
+        .parse::<u64>()
+        .context("duty_cycle_duration must be a non-negative integer")?;
     let nodes = matches
         .values_of("nodes")
         .unwrap_or_default()
@@ -51,7 +70,17 @@ async fn main() -> Result<()> {
         .map(|x| x.parse::<SocketAddr>())
         .collect::<Result<Vec<_>, _>>()
         .context("Invalid socket address format")?;
+    let fluctuation = match matches
+        .value_of("fluctuation")
+        .unwrap() {
+            "1" => true,
+            "0" => false,
+            _ => panic!("Fluctuation must be 1 or 0"),
+        };
+        
 
+    info!("fluc: {}", fluctuation);
+    info!("duty_cycle_duration: {}", duty_cycle_duration);
     info!("Node address: {}", target);
 
     // NOTE: This log entry is used to compute performance.
@@ -64,7 +93,11 @@ async fn main() -> Result<()> {
         target,
         size,
         rate,
+        low_rate,
+        high_rate,
         nodes,
+        fluctuation,
+        duty_cycle_duration,
     };
 
     // Wait for all nodes to be online and synchronized.
@@ -78,13 +111,18 @@ struct Client {
     target: SocketAddr,
     size: usize,
     rate: u64,
+    low_rate: u64,
+    high_rate: u64,
     nodes: Vec<SocketAddr>,
+    fluctuation: bool,
+    duty_cycle_duration: u64,
 }
 
 impl Client {
     pub async fn send(&self) -> Result<()> {
         const PRECISION: u64 = 20; // Sample precision.
         const BURST_DURATION: u64 = 1000 / PRECISION;
+        let fluctuation_duration: Duration = Duration::from_millis(self.duty_cycle_duration * 1_000);
 
         // The transaction size must be at least 16 bytes to ensure all txs are different.
         if self.size < 9 {
@@ -98,8 +136,17 @@ impl Client {
             .await
             .context(format!("failed to connect to {}", self.target))?;
 
-        // Submit all transactions.
-        let burst = self.rate / PRECISION;
+        let input_rates = [self.high_rate, self.low_rate];
+        let mut current_rate;
+        if self.fluctuation {
+            current_rate = self.high_rate;
+        }
+        else{
+            current_rate = self.rate;
+        }
+        let mut current_rate_index = 0;
+
+        let mut burst = current_rate / PRECISION;
         let mut tx = BytesMut::with_capacity(self.size);
         let mut counter = 0;
         let mut r = rand::thread_rng().gen();
@@ -109,6 +156,7 @@ impl Client {
 
         // NOTE: This log entry is used to compute performance.
         info!("Start sending transactions");
+        let mut current_rate_start = Instant::now();
 
         'main: loop {
             interval.as_mut().tick().await;
@@ -126,7 +174,6 @@ impl Client {
                     tx.put_u8(1u8); // Standard txs start with 1.
                     tx.put_u64(r); // Ensures all clients send different txs.
                 };
-                tx.put_u64(0);
 
                 tx.resize(self.size, 0u8);
                 let bytes = tx.split().freeze();
@@ -135,11 +182,24 @@ impl Client {
                     break 'main;
                 }
             }
+
             if now.elapsed().as_millis() > BURST_DURATION as u128 {
                 // NOTE: This log entry is used to compute performance.
                 warn!("Transaction rate too high for this client");
             }
             counter += 1;
+
+            if self.fluctuation && current_rate_start.elapsed() > fluctuation_duration {
+                current_rate_index = (current_rate_index + 1) % input_rates.len();
+                current_rate = input_rates[current_rate_index];
+
+                burst = current_rate / PRECISION;
+                current_rate_start = current_rate_start
+                        .checked_add(fluctuation_duration)
+                        .expect("Failed to add time");
+            }
+
+            info!("Current rate: {}", burst * PRECISION);
         }
         Ok(())
     }

@@ -215,6 +215,25 @@ class BenchParameters:
            
             self.duration = int(json['duration'])
 
+            if 'fluctuation' not in json or json['fluctuation'] == False:
+                self.fluctuation = 0
+            else:
+                self.fluctuation = 1
+
+            if 'duty_cycle_duration' in json:
+                self.duty_cycle_duration = int(json['duty_cycle_duration'])
+            else:
+                self.duty_cycle_duration = 10_000
+
+            if 'fluc_high_rate' in json:
+                self.fluc_high_rate = int(json['fluc_high_rate'])
+            else:
+                self.fluc_high_rate = 40_000
+
+            if 'fluc_low_rate' in json:
+                self.fluc_low_rate = int(json['fluc_low_rate'])
+            else:
+                self.fluc_low_rate = 1_000
 
             self.runs = int(json['runs']) if 'runs' in json else 1
         except KeyError as e:

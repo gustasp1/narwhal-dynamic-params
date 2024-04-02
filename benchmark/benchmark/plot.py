@@ -10,6 +10,8 @@ from benchmark.utils import PathMaker
 from benchmark.config import PlotParameters
 from benchmark.aggregate import LogAggregator
 
+from pathlib import Path
+import shutil
 
 @tick.FuncFormatter
 def default_major_formatter(x, pos):
@@ -94,9 +96,10 @@ class Ploter:
                 linestyle='dotted', marker=next(markers), capsize=3
             )
 
-        plt.legend(loc='lower center', bbox_to_anchor=(0.5, 1), ncol=3)
-        plt.xlim(xmin=0)
-        plt.ylim(0, 4_500)
+        plt.legend(loc='lower center', bbox_to_anchor=(0.5, 1), ncol=2)
+        plt.xlim(xmin=0, xmax=20_000)
+        # plt.xlim(xmin=0)
+        plt.ylim(0, 5_500)
         plt.xlabel(x_label, fontweight='bold')
         plt.ylabel(y_label[0], fontweight='bold')
         plt.xticks(weight='bold')
@@ -105,6 +108,7 @@ class Ploter:
         ax = plt.gca()
         ax.xaxis.set_major_formatter(default_major_formatter)
         ax.yaxis.set_major_formatter(default_major_formatter)
+        ax.figure.set_size_inches(10, 6)
         if 'latency' in type:
             ax.yaxis.set_major_formatter(sec_major_formatter)
         if len(y_label) > 1:
@@ -124,8 +128,9 @@ class Ploter:
         param_type = search(r'Parameter type: (.*)', data)
         if param_type:
             param_type = param_type.group(1)
-        faults = f' ({f} faulty)' if f != '0' else ''
-        params = f', {param_type} params' if param_type else ''
+        faults = f' ({f} faulty)'
+        # faults = f' ({f} faulty)' if f != '0' else ''
+        params = f', {param_type} parameters' if param_type else ''
         return f'{x} nodes{faults}{params}'
 
     @staticmethod
@@ -209,3 +214,40 @@ class Ploter:
 
         cls.plot_latency(latency_files, params.scalability())
         cls.plot_tps(tps_files, params.scalability())
+
+    @classmethod
+    def plot_fluctuations(cls):
+        try:
+            if Path("fluctuation_plots").exists():
+                shutil.rmtree('fluctuation_plots')
+            Path("fluctuation_plots").mkdir()
+            x_label = "Time (s)"
+            y_label = ["Input Rate", "Throughput", "Latency (s)"]
+            
+            with open('input_rates.txt', 'r') as f:
+                lines = f.readlines()
+                min_time = min(max([float(t) for t in lines[1][1:len(lines[1])-2].split(', ')]), \
+                          max([float(t) for t in lines[3][1:len(lines[3])-2].split(', ')]))
+                index = 0
+                for i, filename in enumerate(['input_rate_vs_time.pdf', 'tps_vs_time.pdf', 'latency_vs_time.pdf']):
+                    values = [float(value) for value in lines[index][1:len(lines[index])-2].split(', ')]
+                    index += 1
+                    times = [float(t) for t in lines[index][1:len(lines[index])-2].split(', ')]
+                    index += 1
+                    print(filename)
+
+                    plt.xlim(0, min_time)
+                    plt.xlabel(x_label, fontweight='bold')
+                    plt.ylabel(y_label[i], fontweight='bold')
+                    plt.xticks(weight='bold')
+                    plt.yticks(weight='bold')
+                    plt.grid()
+                    ax = plt.gca()
+                    ax.figure.set_size_inches(9, 4)
+                
+                    plt.plot(times, values)
+                    plt.savefig(f"fluctuation_plots/{filename}", bbox_inches='tight')
+                    plt.clf()
+
+        except FileNotFoundError as e:
+            raise PlotError('Input rates file could not be found', e)
