@@ -247,10 +247,7 @@ impl BatchMaker {
                 Some(transaction) = self.rx_transaction.recv() => {
                     self.current_batch_size += transaction.len();
                     self.current_batch.push(transaction);
-                    if !self.parameter_optimizer.first_tx_recvd {
-                        self.parameter_optimizer.first_tx_recvd = true;
-                        self.parameter_optimizer.first_tx_time = Instant::now();
-                    }
+                    
                     if self.current_batch_size >= self.batch_size {
                         self.seal().await;
                         timer.as_mut().reset(Instant::now() + Duration::from_millis(self.max_batch_delay));
@@ -275,6 +272,11 @@ impl BatchMaker {
     async fn seal(&mut self) {
         #[cfg(feature = "benchmark")]
         let size = self.current_batch_size;
+
+        if !self.parameter_optimizer.first_tx_recvd {
+            self.parameter_optimizer.first_tx_recvd = true;
+            self.parameter_optimizer.first_tx_time = Instant::now();
+        }
 
         let transaction_count = self.current_batch.len();
         if !self.learning {
