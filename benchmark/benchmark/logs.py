@@ -93,7 +93,7 @@ class LogParser:
             f.write(f"{times}\n")
 
     # Groups logs into buckets according to their timestamps.
-    def _group_into_buckets(self, values, times, bucket_duration = 200):
+    def _group_into_buckets(self, values, times, bucket_duration = 2_000):
         i = 0
         next_values, next_times = [], []
         step = 0
