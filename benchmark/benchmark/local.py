@@ -15,6 +15,8 @@ class LocalBench:
 
     def __init__(self, bench_parameters_dict, node_parameters_dict):
         try:
+            self.bench_parameters_dict = bench_parameters_dict
+            self.node_parameters_dict = node_parameters_dict
             self.bench_parameters = BenchParameters(bench_parameters_dict)
             self.node_parameters = NodeParameters(node_parameters_dict)
         except ConfigError as e:
@@ -26,7 +28,7 @@ class LocalBench:
     def _background_run(self, command, log_file):
         name = splitext(basename(log_file))[0]
         cmd = f'{command} 2> {log_file}'
-        subprocess.run(['tmux', 'new', '-d', '-s', name, cmd], check=True)
+        subprocess.run(['tmux', 'new', '-d', '-s', name, cmd], check=True, errors=True)
 
     def _kill_nodes(self):
         try:
@@ -34,8 +36,43 @@ class LocalBench:
             subprocess.run(cmd, stderr=subprocess.DEVNULL)
         except subprocess.SubprocessError as e:
             raise BenchError('Failed to kill testbed', e)
+        
+    def learn(self):
+        best_latency = {}
+        rates = self.bench_parameters.rate
+        batch_sizes = self.node_parameters.json['batch_size']
+        header_sizes = self.node_parameters.json['header_size']
+        quorum_thresholds = self.node_parameters.json['quorum_threshold']
 
-    def run(self, debug=False):
+        total_runs = len(rates) * len(batch_sizes) * len(header_sizes) * len(quorum_thresholds)
+        counter = 1
+        self.node_parameters_dict["quorum_threshold"] = True
+
+        for input_rate in rates:
+            for batch_size in batch_sizes:
+                for header_size in header_sizes:
+                    for quorum_threshold in quorum_thresholds:
+                        best_latency[input_rate] = (float('inf'), 0, 0, 0)
+                        Print.info(f"Running phase {counter} / {total_runs}")
+                        counter += 1
+                        self.bench_parameters_dict["input_rate"] = input_rate
+                        self.node_parameters_dict["batch_size"] = batch_size
+                        self.node_parameters_dict["header_size"] = header_size
+                        self.node_parameters_dict["quorum_threshold"] = quorum_threshold
+                        self.bench_parameters = BenchParameters(self.bench_parameters_dict)
+                        self.node_parameters = NodeParameters(self.node_parameters_dict)
+                        self.run(learning=True, debug=True)
+
+                        latency = LogParser.process(PathMaker.logs_path(), faults=self.faults)._end_to_end_latency()
+                        if latency > 0 and latency < best_latency[input_rate][0]:
+                            best_latency[input_rate] = (latency, batch_size, header_size, quorum_threshold)
+
+        with open("system_level_config.txt", "w") as f:
+            for input_rate, (_, batch_size, header_size, quorum_threshold) in best_latency.items():
+                f.write(f"{input_rate},{batch_size},{header_size},{quorum_threshold}\n")
+
+
+    def run(self, learning=True, debug=False):
         assert isinstance(debug, bool)
         Print.heading('Starting local benchmark')
 
@@ -45,7 +82,6 @@ class LocalBench:
         try:
             Print.info('Setting up testbed...')
             nodes, rate = self.nodes[0], self.rate[0]
-
             # Cleanup all files.
             cmd = f'{CommandMaker.clean_logs()} ; {CommandMaker.cleanup()}'
             subprocess.run([cmd], shell=True, stderr=subprocess.DEVNULL)
@@ -76,12 +112,18 @@ class LocalBench:
             # Run the clients (they will wait for the nodes to be ready).
             workers_addresses = committee.workers_addresses(self.faults)
             rate_share = ceil(rate / committee.workers())
+            low_rate_share = ceil(self.fluc_low_rate / committee.workers())
+            high_rate_share = ceil(self.fluc_high_rate / committee.workers())
             for i, addresses in enumerate(workers_addresses):
                 for (id, address) in addresses:
                     cmd = CommandMaker.run_client(
                         address,
                         self.tx_size,
+                        self.fluctuation,
+                        self.duty_cycle_duration,
                         rate_share,
+                        low_rate_share,
+                        high_rate_share,
                         [x for y in workers_addresses for _, x in y]
                     )
                     log_file = PathMaker.client_log_file(i, id)

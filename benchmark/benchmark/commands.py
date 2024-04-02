@@ -46,14 +46,17 @@ class CommandMaker:
                 f'--store {store} --parameters {parameters} worker --id {id}')
 
     @staticmethod
-    def run_client(address, size, rate, nodes):
+    def run_client(address, size, fluctuation, duty_cycle_duration, rate, low_rate, high_rate, nodes):
         assert isinstance(address, str)
         assert isinstance(size, int) and size > 0
         assert isinstance(rate, int) and rate >= 0
+        assert isinstance(fluctuation, int) and fluctuation in [0, 1]
         assert isinstance(nodes, list)
         assert all(isinstance(x, str) for x in nodes)
         nodes = f'--nodes {" ".join(nodes)}' if nodes else ''
-        return f'./benchmark_client {address} --size {size} --rate {rate} {nodes}'
+        return (f'./benchmark_client {address} --size {size} --rate {rate} '
+               f'--fluctuation {fluctuation} --duty_cycle_duration {duty_cycle_duration} '
+               f'--low_rate {low_rate} --high_rate {high_rate} {nodes}')
 
     @staticmethod
     def kill():

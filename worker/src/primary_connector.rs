@@ -13,15 +13,21 @@ pub struct PrimaryConnector {
     rx_digest: Receiver<SerializedBatchDigestMessage>,
     /// A network sender to send the baches' digests to the primary.
     network: SimpleSender,
+    rx_change_header_size: Receiver<Vec<u8>>,
 }
 
 impl PrimaryConnector {
-    pub fn spawn(primary_address: SocketAddr, rx_digest: Receiver<SerializedBatchDigestMessage>) {
+    pub fn spawn(
+        primary_address: SocketAddr,
+        rx_digest: Receiver<SerializedBatchDigestMessage>,
+        rx_change_header_size: Receiver<Vec<u8>>
+    ) {
         tokio::spawn(async move {
             Self {
                 primary_address,
                 rx_digest,
                 network: SimpleSender::new(),
+                rx_change_header_size,
             }
             .run()
             .await;

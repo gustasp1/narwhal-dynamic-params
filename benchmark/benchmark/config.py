@@ -175,7 +175,7 @@ class NodeParameters:
         except KeyError as e:
             raise ConfigError(f'Malformed parameters: missing key {e}')
 
-        if not all(isinstance(x, int) for x in inputs):
+        if not all(isinstance(x, int) or isinstance(x, list) for x in inputs):
             raise ConfigError('Invalid parameters type')
 
         self.json = json
@@ -214,6 +214,26 @@ class BenchParameters:
             self.tx_size = int(json['tx_size'])
            
             self.duration = int(json['duration'])
+
+            if 'fluctuation' not in json or json['fluctuation'] == False:
+                self.fluctuation = 0
+            else:
+                self.fluctuation = 1
+
+            if 'duty_cycle_duration' in json:
+                self.duty_cycle_duration = int(json['duty_cycle_duration'])
+            else:
+                self.duty_cycle_duration = 10_000
+
+            if 'fluc_high_rate' in json:
+                self.fluc_high_rate = int(json['fluc_high_rate'])
+            else:
+                self.fluc_high_rate = 40_000
+
+            if 'fluc_low_rate' in json:
+                self.fluc_low_rate = int(json['fluc_low_rate'])
+            else:
+                self.fluc_low_rate = 1_000
 
             self.runs = int(json['runs']) if 'runs' in json else 1
         except KeyError as e:

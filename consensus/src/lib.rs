@@ -5,8 +5,10 @@ use crypto::{Digest, PublicKey};
 use log::{debug, info, log_enabled, warn};
 use primary::{Certificate, Round};
 use std::cmp::max;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use tokio::sync::mpsc::{Receiver, Sender};
+use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::time::Instant;
 
 #[cfg(test)]
 #[path = "tests/consensus_tests.rs"]
@@ -62,6 +64,33 @@ impl State {
     }
 }
 
+struct PerformanceMetrics {
+    tps_queue: VecDeque<(u64, usize)>, 
+    current_tps: usize,
+}
+
+impl PerformanceMetrics {
+    fn new() -> Self {
+        Self {
+            tps_queue: VecDeque::new(),
+            current_tps: 0,
+        }
+    }
+
+    fn add_measurement(&mut self, digest: &Digest) {
+        let now: u64 = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Failed to measure time")
+            .as_millis() as u64;
+        self.tps_queue.push_back((now, digest.transaction_count));
+        self.current_tps += digest.transaction_count;
+
+        while self.tps_queue.len() > 0 && self.tps_queue.front().unwrap().0 + 1_000 < now {
+            self.current_tps -= self.tps_queue.pop_front().unwrap().1;
+        }
+    }
+}
+
 pub struct Consensus {
     /// The committee information.
     committee: Committee,
@@ -105,9 +134,16 @@ impl Consensus {
     async fn run(&mut self) {
         // The consensus state (everything else is immutable).
         let mut state = State::new(self.genesis.clone());
+        let mut performance_metrics = PerformanceMetrics::new();
+        let mut first_digest_time = Instant::now();
+        let mut certificate_received = false;
 
         // Listen to incoming certificates.
         while let Some(certificate) = self.rx_primary.recv().await {
+            if !certificate_received {
+                first_digest_time = Instant::now();
+                certificate_received = true;
+            }
             debug!("Processing {:?}", certificate);
             let round = certificate.round();
 
@@ -118,16 +154,18 @@ impl Consensus {
                 .or_insert_with(HashMap::new)
                 .insert(certificate.origin(), (certificate.digest(), certificate));
 
-            // Try to order the dag to commit. Start from the previous round and check if it is a leader round.
+            // Try to order the dag to commit. Start from the highest round for which we have at least
+            // 2f+1 certificates. This is because we need them to reveal the common coin.
             let r = round - 1;
 
             // We only elect leaders for even round numbers.
-            if r % 2 != 0 || r < 2 {
+            if r % 2 != 0 || r < 4 {
                 continue;
             }
 
-            // Get the certificate's digest of the leader. If we already ordered this leader, there is nothing to do.
-            let leader_round = r;
+            // Get the certificate's digest of the leader of round r-2. If we already ordered this leader,
+            // there is nothing to do.
+            let leader_round = r - 2;
             if leader_round <= state.last_committed_round {
                 continue;
             }
@@ -139,10 +177,10 @@ impl Consensus {
             // Check if the leader has f+1 support from its children (ie. round r-1).
             let stake: Stake = state
                 .dag
-                .get(&round)
+                .get(&(r - 1))
                 .expect("We should have the whole history by now")
                 .values()
-                .filter(|(_, x)| x.header.parents.contains(leader_digest))
+                .filter(|(_, x)| x.header.parents.contains(&leader_digest))
                 .map(|(_, x)| self.committee.stake(&x.origin()))
                 .sum();
 
@@ -184,6 +222,15 @@ impl Consensus {
                 for digest in certificate.header.payload.keys() {
                     // NOTE: This log entry is used to compute performance.
                     info!("Committed {} -> {:?}", certificate.header, digest);
+                    performance_metrics.add_measurement(digest);
+
+                    let elapsed_time = first_digest_time.elapsed().as_millis() as usize;
+                    if elapsed_time < 1_000 {
+                        info!("Current TPS: {}", performance_metrics.current_tps * 1_000 / elapsed_time);
+                    }
+                    else{
+                        info!("Current TPS: {}", performance_metrics.current_tps);
+                    }
                 }
 
                 self.tx_primary
@@ -205,12 +252,14 @@ impl Consensus {
         // At this stage, we are guaranteed to have 2f+1 certificates from round r (which is enough to
         // compute the coin). We currently just use round-robin.
         #[cfg(test)]
-        let seed = 0;
+        let coin = 0;
         #[cfg(not(test))]
-        let seed = round;
+        let coin = round;
 
         // Elect the leader.
-        let leader = self.committee.leader(seed as usize);
+        let mut keys: Vec<_> = self.committee.authorities.keys().cloned().collect();
+        keys.sort();
+        let leader = keys[coin as usize % self.committee.size()];
 
         // Return its certificate and the certificate's digest.
         dag.get(&round).map(|x| x.get(&leader)).flatten()

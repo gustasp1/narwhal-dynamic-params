@@ -16,9 +16,13 @@ def local(ctx, debug=True):
         'faults': 0,
         'nodes': 4,
         'workers': 1,
-        'rate': 5_000,
+        'rate': 500,
         'tx_size': 512,
-        'duration': 2,
+        'duration': 20,
+        'duty_cycle_duration': 5,
+        'fluc_low_rate': 100,
+        'fluc_high_rate': 1000,
+        'fluctuation': False,
     }
     node_params = {
         'header_size': 1_000,  # bytes
@@ -27,7 +31,9 @@ def local(ctx, debug=True):
         'sync_retry_delay': 10_000,  # ms
         'sync_retry_nodes': 3,  # number of nodes
         'batch_size': 500_000,  # bytes
-        'max_batch_delay': 200  # ms
+        'max_batch_delay': 200,  # ms
+        'learning': False,
+        'quorum_threshold': '2f+1',
     }
     try:
         ret = LocalBench(bench_params, node_params).run(debug=debug)
@@ -133,6 +139,13 @@ def plot(ctx):
     except PlotError as e:
         Print.error(BenchError('Failed to plot performance', e))
 
+@task
+def fplot(ctx):
+    ''' Plot input rate, TPS, and latency against time while input rate is flactuating '''
+    try:
+        Ploter.plot_fluctuations()
+    except PlotError as e:
+        Print.error(BenchError('Failed to plot flactuations', e))
 
 @task
 def kill(ctx):

@@ -52,7 +52,7 @@ pub struct Worker {
     store: Store,
     /// The total number of workers. total = count primaries * count workers per primary.
     total_worker_count: usize,
-}
+}   
 
 impl Worker {
     pub fn spawn(
@@ -75,8 +75,9 @@ impl Worker {
 
         // Spawn all worker tasks.
         let (tx_primary, rx_primary) = channel(CHANNEL_CAPACITY);
+        let (tx_change_header_size, rx_change_header_size) = channel(CHANNEL_CAPACITY);
         worker.handle_primary_messages();
-        worker.handle_clients_transactions(tx_primary.clone());
+        worker.handle_clients_transactions(tx_primary.clone(), tx_change_header_size);
         worker.handle_workers_messages(tx_primary);
 
         // The `PrimaryConnector` allows the worker to send messages to its primary.
@@ -87,6 +88,7 @@ impl Worker {
                 .expect("Our public key is not in the committee")
                 .worker_to_primary,
             rx_primary,
+            rx_change_header_size,
         );
 
         // NOTE: This log entry is used to compute performance.
@@ -139,7 +141,7 @@ impl Worker {
     }
 
     /// Spawn all tasks responsible to handle clients transactions.
-    fn handle_clients_transactions(&self, tx_primary: Sender<SerializedBatchDigestMessage>) {
+    fn handle_clients_transactions(&self, tx_primary: Sender<SerializedBatchDigestMessage>, tx_change_header_size: Sender<Vec<u8>>) {
         let (tx_batch_maker, rx_batch_maker) = channel(CHANNEL_CAPACITY);
         let (tx_quorum_waiter, rx_quorum_waiter) = channel(CHANNEL_CAPACITY);
         let (tx_processor, rx_processor) = channel(CHANNEL_CAPACITY);
@@ -164,6 +166,7 @@ impl Worker {
             self.parameters.max_batch_delay,
             /* rx_transaction */ rx_batch_maker,
             /* tx_message */ tx_quorum_waiter,
+            /* tx_change_header_size */ tx_change_header_size,
             /* workers_addresses */
             self.committee
                 .others_workers(&self.name, &self.id)
@@ -171,6 +174,7 @@ impl Worker {
                 .map(|(name, addresses)| (*name, addresses.worker_to_worker))
                 .collect(),
             self.total_worker_count,
+            self.parameters.learning,
         );
 
         // The `QuorumWaiter` waits for 2f authorities to acknowledge reception of the batch. It then forwards
@@ -180,6 +184,7 @@ impl Worker {
             /* stake */ self.committee.stake(&self.name),
             /* rx_message */ rx_quorum_waiter,
             /* tx_batch */ tx_processor,
+            self.parameters.quorum_threshold.clone(),
         );
 
         // The `Processor` hashes and stores the batch. It then forwards the batch's digest to the `PrimaryConnector`
@@ -280,7 +285,7 @@ impl MessageHandler for WorkerReceiverHandler {
 
         // Deserialize and parse the message.
         match bincode::deserialize(&serialized) {
-            Ok(WorkerMessage::Batch(_, transaction_count,)) => self
+            Ok(WorkerMessage::Batch(_, transaction_count)) => self
                 .tx_processor
                 .send(ProcessorMessage { batch: serialized.to_vec(), transaction_count})
                 .await
