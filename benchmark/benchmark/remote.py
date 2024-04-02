@@ -78,7 +78,7 @@ class Bench:
         hosts = self.manager.hosts(flat=True)
         try:
             g = Group(*hosts, user="ubuntu", connect_kwargs=self.connect)
-            g.run(" && ".join(cmd), hide=True)
+            g.run(" && ".join(cmd), hide=False)
             Print.heading(f"Initialized testbed of {len(hosts)} nodes")
         except (GroupException, ExecutionError) as e:
             e = FabricError(e) if isinstance(e, GroupException) else e
@@ -92,7 +92,7 @@ class Bench:
         cmd = [delete_logs, f"({CommandMaker.kill()} || true)"]
         try:
             g = Group(*hosts, user="ubuntu", connect_kwargs=self.connect)
-            g.run(" && ".join(cmd), hide=True)
+            g.run(" && ".join(cmd), hide=False)
         except GroupException as e:
             raise BenchError("Failed to kill nodes", FabricError(e))
 
@@ -135,7 +135,7 @@ class Bench:
         name = splitext(basename(log_file))[0]
         cmd = f'tmux new -d -s "{name}" "{command} |& tee {log_file}"'
         c = Connection(host, user="ubuntu", connect_kwargs=self.connect)
-        output = c.run(cmd, hide=True)
+        output = c.run(cmd, hide=False)
         self._check_stderr(output)
 
     def _update(self, hosts, collocate):
@@ -154,7 +154,7 @@ class Bench:
             CommandMaker.alias_binaries(f"./{self.settings.repo_name}/target/release/"),
         ]
         g = Group(*ips, user="ubuntu", connect_kwargs=self.connect)
-        g.run(" && ".join(cmd), hide=True)
+        g.run(" && ".join(cmd), hide=False)
 
     def _config(self, hosts, node_parameters, bench_parameters):
         Print.info("Generating configuration files...")
@@ -199,7 +199,7 @@ class Bench:
         for i, name in enumerate(progress):
             for ip in committee.ips(name):
                 c = Connection(ip, user="ubuntu", connect_kwargs=self.connect)
-                c.run(f"{CommandMaker.cleanup()} || true", hide=True)
+                c.run(f"{CommandMaker.cleanup()} || true", hide=False)
                 c.put(PathMaker.committee_file(), ".")
                 c.put(PathMaker.key_file(i), ".")
                 c.put(PathMaker.parameters_file(), ".")
@@ -304,7 +304,7 @@ class Bench:
 
         # Parse logs and return the parser.
         Print.info("Parsing logs and computing performance...")
-        return LogParser.process(PathMaker.logs_path(), faults=faults, param_type=param_type)
+        return LogParser.process(PathMaker.logs_path(), faults=faults)
     
     def learn(self, bench_parameters_dict, node_parameters_dict, learning=0, debug=True):
         Print.heading("Starting remote learning")

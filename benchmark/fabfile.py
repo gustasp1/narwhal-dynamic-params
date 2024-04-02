@@ -104,9 +104,10 @@ def remote(ctx, debug=False, param_type='static'):
         'nodes': [10],
         'workers': 1,
         'collocate': True,
-        'rate': [1_000],
+        # 'rate': [1000, 4000, 7000, 10000],
+        'rate': [40_000],
         'tx_size': 512,
-        'duration': 25,
+        'duration': 70,
         'runs': 1,
     }
     node_params = {
@@ -115,8 +116,10 @@ def remote(ctx, debug=False, param_type='static'):
         'gc_depth': 50,  # rounds
         'sync_retry_delay': 10_000,  # ms
         'sync_retry_nodes': 3,  # number of nodes
-        'batch_size': 1,  # bytes
-        'max_batch_delay': 200  # ms
+        'batch_size': 500_000,  # bytes
+        'max_batch_delay': 200,  # ms
+        'quorum_threshold': '2f+1',
+        'learning': True
     }
     try:
         Bench(ctx).run(bench_params, node_params, debug=debug, param_type=param_type)
