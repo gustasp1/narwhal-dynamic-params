@@ -227,15 +227,13 @@ impl Consensus {
 
                     let elapsed_time = first_digest_time.elapsed().as_millis() as usize;
                     if tps_start.elapsed() > tps_log_duration {
-                        tps_start = tps_start
-                            .checked_add(tps_log_duration)
-                            .expect("Failed to add time");
                         if elapsed_time < 1_000 {
                             info!("Current TPS: {}", performance_metrics.current_tps * 1_000 / elapsed_time);
                         }
                         else{
                             info!("Current TPS: {}", performance_metrics.current_tps);
                         }
+                        tps_start = Instant::now();
                     }
                 }
 
