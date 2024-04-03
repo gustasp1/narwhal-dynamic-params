@@ -15,7 +15,8 @@ class ParseError(Exception):
 
 
 class LogParser:
-    def __init__(self, clients, primaries, workers, faults=0):
+    def __init__(self, clients, primaries, workers, faults, param_type):
+        self.param_type = param_type
         self.worker_count = len(workers)
         inputs = [clients, primaries, workers]
         assert all(isinstance(x, list) for x in inputs)
@@ -93,7 +94,7 @@ class LogParser:
             f.write(f"{times}\n")
 
     # Groups logs into buckets according to their timestamps.
-    def _group_into_buckets(self, values, times, bucket_duration = 200):
+    def _group_into_buckets(self, values, times, bucket_duration = 2_000):
         i = 0
         next_values, next_times = [], []
         step = 0
@@ -274,6 +275,7 @@ class LogParser:
             '-----------------------------------------\n'
             ' + CONFIG:\n'
             f' Faults: {self.faults} node(s)\n'
+            f' Parameter type: {self.param_type}\n'
             f' Committee size: {self.committee_size} node(s)\n'
             f' Worker(s) per node: {self.workers} worker(s)\n'
             f' Collocate primary and workers: {self.collocate}\n'
@@ -306,7 +308,7 @@ class LogParser:
             f.write(self.result())
 
     @classmethod
-    def process(cls, directory, faults=0):
+    def process(cls, directory, faults, param_type):
         assert isinstance(directory, str)
         clients = []
         for filename in sorted(glob(join(directory, 'client-*.log'))):
@@ -321,4 +323,4 @@ class LogParser:
             with open(filename, 'r') as f:
                 workers += [f.read()]
 
-        return cls(clients, primaries, workers, faults=faults)
+        return cls(clients, primaries, workers, faults, param_type)

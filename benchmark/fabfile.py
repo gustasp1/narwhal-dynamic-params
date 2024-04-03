@@ -97,7 +97,7 @@ def install(ctx):
 
 
 @task
-def remote(ctx, debug=False, param_type='static'):
+def remote(ctx, debug=False, param_type='dynamic'):
     ''' Run benchmarks on AWS '''
     bench_params = {
         'faults': 0,
@@ -105,13 +105,19 @@ def remote(ctx, debug=False, param_type='static'):
         'workers': 1,
         'collocate': True,
         # 'rate': [1000, 4000, 7000, 10000],
-        'rate': [40_000],
+        # 'rate': [4_500, 7000, 10000, 20000, 40_000, 60000],
+        'rate': [130_000],
+        # 'rate': [10000, 20_000, 40_000, 60000],
         'tx_size': 512,
-        'duration': 70,
+        'duration': 60,
         'runs': 1,
+        'duty_cycle_duration': 30,
+        'fluc_low_rate': 2000,
+        'fluc_high_rate': 30000,
+        'fluctuation': False,
     }
     node_params = {
-        'header_size': 1_000,  # bytes
+        'header_size': 50,  # bytes
         'max_header_delay': 200,  # ms
         'gc_depth': 50,  # rounds
         'sync_retry_delay': 10_000,  # ms
@@ -119,7 +125,7 @@ def remote(ctx, debug=False, param_type='static'):
         'batch_size': 500_000,  # bytes
         'max_batch_delay': 200,  # ms
         'quorum_threshold': '2f+1',
-        'learning': True
+        'learning': False
     }
     try:
         Bench(ctx).run(bench_params, node_params, debug=debug, param_type=param_type)

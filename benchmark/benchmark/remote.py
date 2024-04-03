@@ -304,7 +304,7 @@ class Bench:
 
         # Parse logs and return the parser.
         Print.info("Parsing logs and computing performance...")
-        return LogParser.process(PathMaker.logs_path(), faults=faults)
+        return LogParser.process(PathMaker.logs_path(), faults, param_type)
     
     def learn(self, bench_parameters_dict, node_parameters_dict, learning=0, debug=True):
         Print.heading("Starting remote learning")

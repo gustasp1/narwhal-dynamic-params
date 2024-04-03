@@ -97,7 +97,8 @@ class Ploter:
             )
 
         plt.legend(loc='lower center', bbox_to_anchor=(0.5, 1), ncol=2)
-        plt.xlim(xmin=0, xmax=20_000)
+        plt.xlim(xmin=0)
+        # plt.xlim(xmin=0, xmax=20_000)
         # plt.xlim(xmin=0)
         plt.ylim(0, 5_500)
         plt.xlabel(x_label, fontweight='bold')
@@ -222,32 +223,34 @@ class Ploter:
                 shutil.rmtree('fluctuation_plots')
             Path("fluctuation_plots").mkdir()
             x_label = "Time (s)"
-            y_label = ["Input Rate", "Throughput", "Latency (s)"]
+            y_label = ["Throughput", "Latency (s)"]
             
             with open('input_rates.txt', 'r') as f:
                 lines = f.readlines()
-                min_time = min(max([float(t) for t in lines[1][1:len(lines[1])-2].split(', ')]), \
-                          max([float(t) for t in lines[3][1:len(lines[3])-2].split(', ')]))
-                index = 0
-                for i, filename in enumerate(['input_rate_vs_time.pdf', 'tps_vs_time.pdf', 'latency_vs_time.pdf']):
+
+                fig, axs = plt.subplots(2, 1, figsize=(4, 5))
+                index = 2
+                for i, filename in enumerate(['tps_vs_time.pdf', 'latency_vs_time.pdf']):
                     values = [float(value) for value in lines[index][1:len(lines[index])-2].split(', ')]
                     index += 1
                     times = [float(t) for t in lines[index][1:len(lines[index])-2].split(', ')]
                     index += 1
                     print(filename)
 
-                    plt.xlim(0, min_time)
-                    plt.xlabel(x_label, fontweight='bold')
-                    plt.ylabel(y_label[i], fontweight='bold')
-                    plt.xticks(weight='bold')
-                    plt.yticks(weight='bold')
-                    plt.grid()
-                    ax = plt.gca()
-                    ax.figure.set_size_inches(9, 4)
+                    axs[i].plot(times, values)
+                    axs[i].set_xlim(0, 120)
+                    axs[i].set_ylim(0, None)
+                    axs[i].set_xlabel(x_label, fontweight='bold')
+                    axs[i].set_ylabel(y_label[i], fontweight='bold')
+                    if i == 0:
+                        axs[i].yaxis.set_major_formatter(default_major_formatter)
+                    else:
+                        axs[i].set_ylim(0, 3)
+                    axs[i].xaxis.set_major_formatter(default_major_formatter)
+                    axs[i].grid()
                 
-                    plt.plot(times, values)
-                    plt.savefig(f"fluctuation_plots/{filename}", bbox_inches='tight')
-                    plt.clf()
+                plt.tight_layout()
+                plt.savefig(f"fluctuation_plots/all.pdf", bbox_inches='tight')
 
         except FileNotFoundError as e:
             raise PlotError('Input rates file could not be found', e)
