@@ -57,9 +57,6 @@ pub struct BatchMaker {
     learning: bool,
 }
 
-pub struct InputRate {
-    
-}
 
 #[derive(Clone)]
 #[derive(PartialEq)]

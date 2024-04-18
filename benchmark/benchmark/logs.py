@@ -40,7 +40,8 @@ class LogParser:
         self.size, self.rate, self.start, misses, self.sent_samples, \
                 rates_times = zip(*results)
         self.misses = sum(misses)
-        self._process_values_times(rates_times, 'w', rates = True)
+        if param_type == 'fluctuating':
+            self._process_values_times(rates_times, 'w', rates = True)
         
         # Parse the primaries logs.
         try:
@@ -51,7 +52,8 @@ class LogParser:
         proposals, commits, self.configs, primary_ips, tps_times = zip(*results)
         self.proposals = self._merge_results([x.items() for x in proposals])
         self.commits = self._merge_results([x.items() for x in commits])
-        self._process_values_times(tps_times)
+        if param_type == 'fluctuating':
+            self._process_values_times(tps_times)
 
         # Parse the workers logs.
         try:
@@ -243,14 +245,14 @@ class LogParser:
                     latency_times.append(end)
                     latencies.append(end-start)
                     latency_sum += [end-start]
-        latencies, latency_times = [list(x) for x in zip(*sorted(zip(latencies, latency_times), key=lambda x : x[1]))]
-        print(">>>>>>>", self.global_start)
-        latency_times = [t - self.global_start for t in latency_times]
+        if self.param_type == 'fluctuating':
+            latencies, latency_times = [list(x) for x in zip(*sorted(zip(latencies, latency_times), key=lambda x : x[1]))]
+            latency_times = [t - self.global_start for t in latency_times]
 
-        latencies, times = self._group_into_buckets(latencies, latency_times)
-        
-        self._write_to_file(latencies)
-        self._write_to_file(times)
+            latencies, times = self._group_into_buckets(latencies, latency_times)
+            
+            self._write_to_file(latencies)
+            self._write_to_file(times)
 
         return mean(latency_sum) if latency_sum else 0
 

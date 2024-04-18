@@ -80,27 +80,87 @@ class Ploter:
         data = self.results[0]
         size = int(search(r'Transaction size: (\d+)', data).group(1))
         return x * 10**6 / size
+    
+    def _find_neighbors(self, x, lst):
+        if x <= lst[0]:
+            return (0, 0)
+        for i in range(len(lst)-1):
+            if x >= lst[i] and x <= lst[i+1]:
+                return (i, i+1)
+            
+        return (None, None) 
 
     def _plot(self, x_label, y_label, y_axis, z_axis, type):
         plt.figure()
-        markers = cycle(['o', 'v', 's', 'p', 'D', 'P'])
         self.results.sort(key=self._natural_keys, reverse=(type == 'tps'))
+        markers = cycle(['o', 'v'])
+        colors = cycle(['green', 'green', 'firebrick', 'firebrick'])
+        linestyles = cycle(['dashed', 'dotted'])
+        if len(self.results) == 2:
+            markers = cycle(['o', 'o', 'v', 's', 'p', 'D', 'P'])
+            colors = cycle(['green', 'firebrick', 'firebrick'])
+            linestyles = cycle(['dashed', 'dashed'])
+
+        static_x = {}
+        dynamic_x = {}
+        sizes = []
+        plot_improvements = False
         for result in self.results:
             y_values, y_err = y_axis(result)
             x_values = self._variable(result)
+
+            label = z_axis(result)
+            print(label)
+            size = label[10]
+            if size not in sizes:
+                sizes.append(size)
+            if "parameters" in label:
+                plot_improvements = True
+
+            if "static" in label:
+                static_x[size] = {x_values[i] : y_values[i] for i in range(len(x_values))}
+            if "dynamic" in label:
+                dynamic_x[size] = {x_values[i] : y_values[i] for i in range(len(x_values))}
             if len(y_values) != len(y_err) or len(y_err) != len(x_values):
                 raise PlotError('Unequal number of x, y, and y_err values')
 
             plt.errorbar(
-                x_values, y_values, yerr=y_err, label=z_axis(result),
-                linestyle='dotted', marker=next(markers), capsize=3
+                x_values, y_values, yerr=y_err, label=label,
+                linestyle=next(linestyles), marker=next(markers), capsize=3, color = next(colors)
             )
+
+        improvements_x = defaultdict(list)
+        improvements_y = defaultdict(list)
+        for label in sizes:
+            print(label)
+            if len(static_x) == 0:
+                continue
+            if static_x[label] or dynamic_x[label]: 
+                static_key_list = sorted(static_x[label].keys())
+
+                for x in dynamic_x[label].keys():
+                    l, r = self._find_neighbors(x, static_key_list)
+                    if l is None:
+                        continue
+                    l = static_key_list[l]
+                    r = static_key_list[r]
+                    
+                    x_diff = r - l
+                    if x_diff == 0:
+                        x_diff = 1
+                    y_diff = static_x[label][r] - static_x[label][l]
+
+                    val = static_x[label][l] + y_diff / x_diff * (x - l)
+                    improvement = (dynamic_x[label][x] - val) / val * 100 * -1
+
+                    improvements_x[label].append(x)
+                    improvements_y[label].append(improvement)
+
+
 
         plt.legend(loc='lower center', bbox_to_anchor=(0.5, 1), ncol=2)
         plt.xlim(xmin=0)
-        # plt.xlim(xmin=0, xmax=20_000)
-        # plt.xlim(xmin=0)
-        plt.ylim(0, 5_500)
+        plt.ylim(0, 4100)
         plt.xlabel(x_label, fontweight='bold')
         plt.ylabel(y_label[0], fontweight='bold')
         plt.xticks(weight='bold')
@@ -109,7 +169,7 @@ class Ploter:
         ax = plt.gca()
         ax.xaxis.set_major_formatter(default_major_formatter)
         ax.yaxis.set_major_formatter(default_major_formatter)
-        ax.figure.set_size_inches(10, 6)
+        ax.figure.set_size_inches(7.6, 3)
         if 'latency' in type:
             ax.yaxis.set_major_formatter(sec_major_formatter)
         if len(y_label) > 1:
@@ -121,6 +181,37 @@ class Ploter:
 
         for x in ['pdf', 'png']:
             plt.savefig(PathMaker.plot_file(type, x), bbox_inches='tight')
+
+        if not plot_improvements:
+            return
+        plt.clf()
+
+        print(improvements_x)
+
+        markers = cycle(['o', 'v', 's', 'p', 'D', 'P'])
+        colors = cycle(['firebrick', 'mediumblue', 'green'])
+
+        for label in sizes:
+            plt.errorbar(
+                    improvements_x[label], improvements_y[label], label=f"10 nodes ({label} faulty)",
+                    linestyle='dashed', marker=next(markers), capsize=3, color = next(colors)
+                )
+
+            plt.legend(loc='lower center', bbox_to_anchor=(0.83, 0.67))
+            plt.xlim(xmin=0, xmax=20_000)
+            plt.ylim(-20, 40)
+            plt.xlabel("Throughput (tx/s)", fontweight='bold')
+            plt.ylabel("Performance Gain (%)", fontweight='bold')
+            plt.xticks(weight='bold')
+            plt.yticks(weight='bold')
+            plt.grid()
+            ax.axhline(0, color='black', linewidth=1, label='_no_legend_', zorder=3, linestyle='dotted')
+            ax = plt.gca()
+            ax.xaxis.set_major_formatter(default_major_formatter)
+            ax.yaxis.set_major_formatter(default_major_formatter)
+            ax.figure.set_size_inches(7.6, 3)
+
+            plt.savefig("plots/improvements.pdf", bbox_inches='tight')
 
     @staticmethod
     def nodes(data):
