@@ -52,13 +52,9 @@ pub struct BatchMaker {
     /// A network sender to broadcast the batches to the other workers.
     network: ReliableSender,
     parameter_optimizer: ParameterOptimizer,
-        /// If the learning flag is set, do not change parameters based on input load because we 
+    /// If the learning flag is set, do not change parameters based on input load because we 
     /// are trying to test the latency for a particular input rate and system level
     learning: bool,
-}
-
-pub struct InputRate {
-    
 }
 
 #[derive(Clone)]
