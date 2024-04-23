@@ -7,7 +7,7 @@ use primary::{Certificate, Round};
 use std::cmp::max;
 use std::collections::{HashMap, HashSet, VecDeque};
 use tokio::sync::mpsc::{Receiver, Sender};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time::Instant;
 
 #[cfg(test)]
@@ -137,6 +137,8 @@ impl Consensus {
         let mut performance_metrics = PerformanceMetrics::new();
         let mut first_digest_time = Instant::now();
         let mut certificate_received = false;
+        let mut tps_start = Instant::now();
+        let tps_log_duration = Duration::from_millis(50);
 
         // Listen to incoming certificates.
         while let Some(certificate) = self.rx_primary.recv().await {
@@ -221,15 +223,18 @@ impl Consensus {
                 for digest in certificate.header.payload.keys() {
                     // NOTE: This log entry is used to compute performance.
                     info!("Committed {} -> {:?}", certificate.header, digest);
-                    performance_metrics.add_measurement(digest);
+                    // performance_metrics.add_measurement(digest);
 
-                    let elapsed_time = first_digest_time.elapsed().as_millis() as usize;
-                    if elapsed_time < 1_000 {
-                        info!("Current TPS: {}", performance_metrics.current_tps * 1_000 / elapsed_time);
-                    }
-                    else{
-                        info!("Current TPS: {}", performance_metrics.current_tps);
-                    }
+                    // let elapsed_time = first_digest_time.elapsed().as_millis() as usize;
+                    // if tps_start.elapsed() > tps_log_duration {
+                    //     if elapsed_time < 1_000 {
+                    //         info!("Current TPS: {}", performance_metrics.current_tps * 1_000 / elapsed_time);
+                    //     }
+                    //     else{
+                    //         info!("Current TPS: {}", performance_metrics.current_tps);
+                    //     }
+                    //     tps_start = Instant::now();
+                    // }
                 }
 
                 self.tx_primary
