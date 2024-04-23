@@ -15,8 +15,7 @@ class ParseError(Exception):
 
 
 class LogParser:
-    def __init__(self, clients, primaries, workers, faults, param_type):
-        self.param_type = param_type
+    def __init__(self, clients, primaries, workers, faults=0, param_type='static'):
         self.worker_count = len(workers)
         inputs = [clients, primaries, workers]
         assert all(isinstance(x, list) for x in inputs)
@@ -30,6 +29,8 @@ class LogParser:
         else:
             self.committee_size = '?'
             self.workers = '?'
+
+        self.param_type = param_type
 
         # Parse the clients logs.
         try:
@@ -310,7 +311,7 @@ class LogParser:
             f.write(self.result())
 
     @classmethod
-    def process(cls, directory, faults, param_type):
+    def process(cls, directory, faults=0, param_type = 'static'):
         assert isinstance(directory, str)
         clients = []
         for filename in sorted(glob(join(directory, 'client-*.log'))):
