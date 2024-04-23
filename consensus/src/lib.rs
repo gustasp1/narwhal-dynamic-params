@@ -223,18 +223,18 @@ impl Consensus {
                 for digest in certificate.header.payload.keys() {
                     // NOTE: This log entry is used to compute performance.
                     info!("Committed {} -> {:?}", certificate.header, digest);
-                    // performance_metrics.add_measurement(digest);
+                    performance_metrics.add_measurement(digest);
 
-                    // let elapsed_time = first_digest_time.elapsed().as_millis() as usize;
-                    // if tps_start.elapsed() > tps_log_duration {
-                    //     if elapsed_time < 1_000 {
-                    //         info!("Current TPS: {}", performance_metrics.current_tps * 1_000 / elapsed_time);
-                    //     }
-                    //     else{
-                    //         info!("Current TPS: {}", performance_metrics.current_tps);
-                    //     }
-                    //     tps_start = Instant::now();
-                    // }
+                    let elapsed_time = first_digest_time.elapsed().as_millis() as usize;
+                    if tps_start.elapsed() > tps_log_duration {
+                        if elapsed_time < 1_000 {
+                            info!("Current TPS: {}", performance_metrics.current_tps * 1_000 / elapsed_time);
+                        }
+                        else{
+                            info!("Current TPS: {}", performance_metrics.current_tps);
+                        }
+                        tps_start = Instant::now();
+                    }
                 }
 
                 self.tx_primary
